@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeviceEnrollments — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--data);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Backend Data Plane · Component</span>
+    <h1>DeviceEnrollments</h1>
+    <p class="dek">
+      One row per enrolled person per device — the server's only record of who's allowed to
+      sign in offline, and the one place an epoch bump actually lives.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>DynamoDB table, on-demand billing</dd></div>
+    <div><dt>Defined in</dt><dd><code>amplify/backend.ts</code></dd></div>
+    <div><dt>Keys</dt><dd>PK <code>deviceId</code>, SK <code>userId</code></dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      Fields: <code>devicePubKey</code>, <code>userPubKey</code> (registered once at
+      enrollment), <code>epoch</code> (bumped only by an explicit admin action — Task 8's
+      revocation), <code>status</code>, <code>lastIssuedExpiry</code>. No Lambda in this
+      backend writes here except the enroll Lambda, and only via
+      <code>GetItem</code>/<code>PutItem</code> — never a broader
+      <code>grantReadWriteData()</code> surface.
+    </p>
+    <p>
+      Physical resources were recreated once during Task 4a after fixing a circular
+      nested-stack dependency between the function's stack and this table's — same
+      <code>deviceId</code>/<code>userId</code> key shape throughout, no data-model change.
+      Currently <code>RemovalPolicy.DESTROY</code>, same MVP-sandbox posture and same
+      before-real-devices caveat as the <a href="kms.html">KMS issuer key</a>.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>Written on every successful enroll or refresh.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">amplify/backend.ts</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cognito User Pool — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--auth);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Auth · Component</span>
+    <h1>Cognito User Pool</h1>
+    <p class="dek">
+      Confirms who someone actually is, once, online — the one moment this app behaves like
+      any other app.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Amazon Cognito User Pool</dd></div>
+    <div><dt>Defined in</dt><dd><code>amplify/auth/resource.ts</code></dd></div>
+    <div><dt>Auth flows</dt><dd><code>ALLOW_USER_SRP_AUTH</code> (client), <code>ALLOW_ADMIN_USER_PASSWORD_AUTH</code> (CLI verification only)</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      <code>LoginScreen</code> calls <code>Amplify.Auth.signIn</code> — plain email/password
+      SRP, nothing offline-specific happens here. <code>explicitAuthFlows</code> also allows
+      <code>ALLOW_ADMIN_USER_PASSWORD_AUTH</code>, deliberately scoped to callers who already
+      hold this project's own AWS IAM credentials (not the broader
+      <code>ALLOW_USER_PASSWORD_AUTH</code>, which would expose direct password auth to any
+      client holding the app's client id) — added so the enrollment Lambda could be verified
+      directly from the CLI before any Flutter login screen existed.
+    </p>
+    <p>
+      Once signed in, the ID token from <code>Amplify.Auth.fetchAuthSession()</code> is sent
+      as the <code>Authorization</code> header on the <code>enroll</code> mutation — AppSync
+      verifies it before the resolver ever runs; the Lambda reads the already-verified
+      identity from <code>$ctx.identity</code>.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>The sign-in that starts every enrollment.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">amplify/auth/resource.ts · amplify/backend.ts · lib/screens/login_screen.dart</footer>
+</div>
+</body>
+</html>

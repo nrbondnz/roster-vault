@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KMS Issuer Signing Key — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>KMS Issuer Signing Key</h1>
+    <p class="dek">
+      Trust Anchor 1 — signs every offline capability token; the private key never touches
+      app memory, and never touches Lambda memory as a private key either.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>KMS asymmetric CMK, <code>ECC_NIST_P256</code>, <code>SIGN_VERIFY</code> only</dd></div>
+    <div><dt>Defined in</dt><dd><code>amplify/backend.ts</code></dd></div>
+    <div><dt>Grants</dt><dd>only <code>kms:Sign</code> to the enroll Lambda — no broader grant exists</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      This key type cannot decrypt — the key usage is <code>SIGN_VERIFY</code> only, so there
+      is no decrypt code path to accidentally expose. Only the <strong>public</strong> half
+      ever ships in the app, baked in at build time
+      (<code>lib/services/issuer_public_key.dart</code>) via <code>kms:GetPublicKey</code>, so
+      signature verification is pure local math with no network call — this is the single most
+      important property to get right and keep right, per this project's own Review Agent
+      checklist.
+    </p>
+    <p>
+      Currently <code>RemovalPolicy.DESTROY</code> with a 7-day pending window — accepted
+      during MVP/sandbox development since no device is enrolled against a live deployment
+      yet, flagged explicitly as something that <strong>must switch to RETAIN</strong> before
+      any deploy with real enrolled devices depending on it.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>Signs the token the enroll Lambda returns.</p>
+    </a>
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>Its public half is what the first, offline check verifies against.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">amplify/backend.ts · lib/services/issuer_public_key.dart</footer>
+</div>
+</body>
+</html>

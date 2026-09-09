@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AppSync — enroll mutation — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--data);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Backend Data Plane · Component</span>
+    <h1>AppSync — <code>enroll</code> Mutation</h1>
+    <p class="dek">
+      A single custom GraphQL mutation, deliberately not modeled through Amplify's
+      <code>data</code> construct.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>AWS AppSync GraphQL API</dd></div>
+    <div><dt>Defined in</dt><dd><code>amplify/appsync/schema.graphql</code>, <code>amplify/backend.ts</code></dd></div>
+    <div><dt>Authorization</dt><dd>Existing Cognito User Pool — AppSync verifies the ID token itself</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      <code>mutation enroll(deviceId, devicePubKey, userPubKey): EnrollResult!</code> —
+      resolved directly by a Lambda (not Amplify's model-CRUD path), since the
+      enrollment/refresh contract is bespoke: sign a token, don't just read/write a row.
+      <code>deviceId</code> is generated client-side once per device and passed in, not
+      derived server-side — the server has no way to know a device's identity except what the
+      device asserts and binds into its own keypair.
+    </p>
+    <p>
+      Called as a plain authenticated HTTPS GraphQL POST from
+      <code>EnrollmentService.enroll</code> — not through the typed <code>amplify_api</code>
+      client, since this endpoint sits outside Amplify's <code>data</code> category entirely.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>The one call this whole flow makes to the backend.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">amplify/appsync/schema.graphql · amplify/backend.ts · lib/services/enrollment_service.dart</footer>
+</div>
+</body>
+</html>

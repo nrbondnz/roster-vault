@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UserIdentityService — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>UserIdentityService</h1>
+    <p class="dek">
+      Trust Anchor 3 — one keypair per enrolled person per device, and the production
+      challenge-response signer <code>OfflineVerifier</code> calls.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Dart service, via the <code>biometric_signature</code> plugin</dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/services/user_identity_service.dart</code></dd></div>
+    <div><dt>Key alias</dt><dd><code>roster_vault_user_key_&lt;userId&gt;</code>, one per person</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      <code>ensureUserKeyPair</code> mirrors <code>DeviceIdentityService</code>'s exact
+      get-before-create pattern, generalized to a per-user alias. <code>signChallenge</code>
+      builds the ES256 JWS signing input (matching the enrollment Lambda's own header/payload
+      shape), signs it via <code>biometric_signature.createSignature</code>, and converts the
+      DER result to the fixed-width raw <code>r‖s</code> format — resolved by reading the
+      plugin's Android source directly (<code>Signature.getInstance("SHA256withECDSA")</code>,
+      standard JCA, always DER; no P1363 path exists in the plugin at all), not guessed. A
+      wrong guess here would have silently shipped a challenge-response that always fails on
+      real hardware — worse than a clearly-flagged gap, which is why this was deliberately left
+      unimplemented until real device access made the real answer checkable.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>Its public key is the other one sent to the <code>enroll</code> mutation.</p>
+    </a>
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>Signs the challenge nonce <code>OfflineVerifier</code> verifies.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/services/user_identity_service.dart</footer>
+</div>
+</body>
+</html>

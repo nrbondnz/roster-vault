@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airplane Mode Setup and Usage — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--client);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Client · The Payoff Flow</span>
+    <h1>Airplane Mode Setup and Usage</h1>
+    <p class="dek">
+      The literal real-world procedure that makes this whole project's core claim real rather
+      than theoretical — and exactly what was run against a real Samsung Galaxy A06 this
+      session, airplane mode genuinely on.
+    </p>
+  </header>
+
+  <div class="detail-body">
+    <p>
+      Every other flow on this site proves a mechanism works in isolation. This one proves the
+      mechanism works with the network physically gone — the one claim this entire project
+      exists to make good on. Two paths reach the same place: a real end user flipping a
+      switch in Settings, and the exact <code>adb</code> commands used to verify it this
+      session. Both converge on the same code path — <code>OfflineVerifier</code> has no
+      <code>http</code> or Amplify import anywhere in it, so there is no network call left to
+      make regardless of which path got you here.
+    </p>
+  </div>
+
+  <figure>
+    <div class="diagram-wrap">
+<svg viewBox="0 0 1090 620" role="img" aria-label="Diagram of two parallel paths to the same offline verification: a real end user turning on Airplane Mode in Settings, disabling the phone's Wi-Fi and cellular radios; and this session's verification path, running adb shell cmd connectivity airplane-mode enable and confirming it with adb shell settings get global airplane_mode_on returning 1 and the airplane icon replacing the Wi-Fi icon in the status bar. Both paths converge: open Roster Vault, tap an enrolled profile, enter that profile's PIN, the Encrypted Storage flow runs with no network involved, then the Offline Sign-In flow runs with zero network calls by construction, and a result -- PASS or a specific named failure -- is shown on screen.">
+      <defs>
+        <marker id="arrowA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-faint)"></path>
+        </marker>
+      </defs>
+
+      <text x="60" y="30" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.04em;fill:var(--text-faint)">REAL END-USER PATH</text>
+      <text x="660" y="30" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.04em;fill:var(--text-faint)">THIS SESSION'S VERIFICATION PATH</text>
+
+      <g><rect x="60" y="46" width="420" height="58" rx="8" style="fill:var(--node-fill);stroke:var(--client)" stroke-width="1.8"></rect>
+        <text x="270" y="70" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;fill:var(--client)">Settings → Airplane Mode → On</text>
+        <text x="270" y="88" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">phone's Wi-Fi and cellular radios physically disabled</text></g>
+
+      <g><rect x="610" y="46" width="420" height="58" rx="8" style="fill:var(--node-fill);stroke:var(--client)" stroke-width="1.8"></rect>
+        <text x="820" y="66" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;fill:var(--client)">adb shell cmd connectivity</text>
+        <text x="820" y="82" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;fill:var(--client)">airplane-mode enable</text>
+        <text x="820" y="98" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">separate device, over USB — no effect on this dev machine's own network</text></g>
+
+      <line x1="270" y1="104" x2="270" y2="150" style="stroke:var(--client)" stroke-width="1.5" marker-end="url(#arrowA)"></line>
+      <line x1="820" y1="104" x2="820" y2="150" style="stroke:var(--client)" stroke-width="1.5" marker-end="url(#arrowA)"></line>
+
+      <g><rect x="60" y="150" width="420" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3" stroke-dasharray="4 4"></rect>
+        <text x="270" y="178" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">visible: no Wi-Fi/cellular bars in the status bar</text></g>
+
+      <g><rect x="610" y="150" width="420" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3" stroke-dasharray="4 4"></rect>
+        <text x="820" y="169" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">confirmed: settings get global airplane_mode_on → "1"</text>
+        <text x="820" y="184" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">airplane icon replaces the Wi-Fi icon in the status bar</text></g>
+
+      <line x1="270" y1="196" x2="450" y2="250" style="stroke:var(--border)" stroke-width="1.4" marker-end="url(#arrowA)"></line>
+      <line x1="820" y1="196" x2="640" y2="250" style="stroke:var(--border)" stroke-width="1.4" marker-end="url(#arrowA)"></line>
+
+      <g><rect x="330" y="250" width="430" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--client)" stroke-width="1.5"></rect>
+        <text x="545" y="278" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:11px;fill:var(--client)">Open Roster Vault, tap an enrolled profile, enter that PIN</text></g>
+
+      <line x1="545" y1="296" x2="545" y2="330" style="stroke:var(--crypto)" stroke-width="1.7" marker-end="url(#arrowA)"></line>
+
+      <a class="node-link" href="encrypted-storage.html" aria-label="Open the Encrypted Storage flow">
+      <g><rect class="node-box" x="330" y="330" width="430" height="54" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <text x="545" y="352" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">Encrypted Storage flow runs</text>
+        <text x="545" y="369" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">reads the local, PIN-wrapped partition — no network involved</text></g>
+      </a>
+
+      <line x1="545" y1="384" x2="545" y2="418" style="stroke:var(--crypto)" stroke-width="1.7" marker-end="url(#arrowA)"></line>
+
+      <a class="node-link" href="offline-sign-in.html" aria-label="Open the Offline Sign-In flow">
+      <g><rect class="node-box" x="330" y="418" width="430" height="66" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="2"></rect>
+        <text x="545" y="440" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:700;fill:var(--crypto)">Offline Sign-In flow runs</text>
+        <text x="545" y="458" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">OfflineVerifier — zero network calls, no http/Amplify import at all</text>
+        <text x="545" y="473" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">not merely "reviewed to not call the network" — enforced by construction</text></g>
+      </a>
+
+      <line x1="545" y1="484" x2="545" y2="518" style="stroke:var(--crypto)" stroke-width="1.7" marker-end="url(#arrowA)"></line>
+
+      <g><rect x="330" y="518" width="430" height="70" rx="8" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.4"></rect>
+        <text x="545" y="544" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--text)">Result shown on screen</text>
+        <text x="545" y="562" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">"Offline sign-in: PASS" — or a specific named FAIL</text>
+        <text x="545" y="578" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">verified live: PASS, with airplane mode confirmed on, then confirmed off again</text></g>
+
+    </svg>
+    </div>
+    <figcaption>
+      This is the payoff step — the same discipline this project's own Story Agent process
+      demands: "never claim offline without proving it." Code review alone never satisfies
+      this; only watching it happen with the radios physically off does.
+    </figcaption>
+  </figure>
+
+  <footer class="colophon">
+    docs/roster-vault/Architecture/Data Flow.md · docs/roster-vault/stories/story-checkpoint-mvp.md (Task 5)
+  </footer>
+</div>
+</body>
+</html>

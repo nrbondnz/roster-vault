@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RosterScreen — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--client);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Client · Component</span>
+    <h1>RosterScreen</h1>
+    <p class="dek">
+      The app's real entry point (Task 7) — the actual "pick your name" surface the whole
+      project exists to build, not a debug list.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Flutter <code>StatefulWidget</code></dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/screens/roster_screen.dart</code></dd></div>
+    <div><dt>Reads</dt><dd><code>RosterRegistryService.listProfiles()</code> — local only</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      Set as <code>MaterialApp.home</code> in <code>lib/main.dart</code> — <code>AuthGate</code>
+      (Cognito sign-in) and the enrollment screen are now a sub-route reached from here via
+      "Add a person," not the app's forced entry point they were through Task 6. Tapping a
+      name shows a PIN dialog (after a lockout check via <code>PinLockoutService</code>,
+      Task 9) and, on success, pushes <code>ProfileHomeScreen</code> with the recovered token.
+    </p>
+    <p>
+      "Add a person" is disabled ("Add a person (offline)") whenever <code>connectivity_plus</code>
+      reports no real connection — per
+      <code>docs/roster-vault/Architecture/Multi-User Partitioning.md</code>'s "Roster
+      Management Is an Online-Only Surface," greyed out honestly rather than left enabled to
+      fail confusingly partway through a Cognito sign-in.
+    </p>
+    <p>
+      A real bug caught live on-device, not in review: the roster-refresh callback was
+      originally an arrow-body <code>setState</code> assignment, whose value is the
+      assignment expression itself (a <code>Future</code>) — Flutter's <code>setState</code>
+      explicitly rejects a callback that returns a <code>Future</code> at runtime. The write
+      succeeded but the roster silently never refreshed. Fixed to a block body.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>Where a tap on a name enters the fully offline unlock-and-verify chain.</p>
+    </a>
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>"Add a person" is this flow's real starting gesture.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/screens/roster_screen.dart · lib/main.dart</footer>
+</div>
+</body>
+</html>

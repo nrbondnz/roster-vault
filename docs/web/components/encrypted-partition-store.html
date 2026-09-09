@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EncryptedPartitionStore — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>EncryptedPartitionStore</h1>
+    <p class="dek">
+      "Real Partitioning, Not Just a UI Filter" — one genuinely encrypted SQLite file per
+      enrolled person, keyed by their own <code>K_user</code>.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Dart wrapper around <code>package:sqlite3</code></dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/services/encrypted_partition_store.dart</code></dd></div>
+    <div><dt>Cipher build</dt><dd><code>sqlite3mc</code> — SQLite3 Multiple Ciphers</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      <code>sqlcipher_flutter_libs</code> — the obvious first choice — turned out to be EOL
+      upstream (its own pub.dev listing says outright: "Not used anymore, update to version
+      3.x of package:sqlite3 instead"). <code>package:sqlite3</code> 3.x bundles cipher
+      support natively via Dart's native-asset build hooks, with three selectable binary
+      variants. <code>sqlcipher</code> itself still links OpenSSL on Windows, Linux, and
+      Android — the exact dependency this project doesn't have installed —
+      <code>sqlite3mc</code> is self-contained, downloaded as a precompiled binary per
+      platform. Selected via <code>pubspec.yaml</code>'s <code>hooks.user_defines.sqlite3.source</code>.
+    </p>
+    <p>
+      <strong>Verified with real ciphertext, not assumed:</strong> a written file's raw bytes
+      are neither the plaintext <code>"SQLite format 3"</code> header nor do they contain the
+      plaintext value anywhere; a wrong key fails to read existing data
+      (<code>SqliteException(26): file is not a database</code>); the right key still works.
+      Checked on Windows first, then confirmed with a live on-device test on the real Android
+      deployment target — the same "Test encrypted storage" button still lives in the debug
+      screen reached via "Add a person."
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/encrypted-storage.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Encrypted Storage</div>
+      <h3>Encrypted Storage — the PIN gate</h3>
+      <p>Where a person's PIN-wrapped token actually lives at rest.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/services/encrypted_partition_store.dart · pubspec.yaml</footer>
+</div>
+</body>
+</html>

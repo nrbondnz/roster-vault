@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roster Vault Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="title-block">
+    <span class="eyebrow">Roster Vault · Infrastructure Reference</span>
+    <h1>Roster Vault Architecture</h1>
+    <p class="dek">
+      Offline multi-user authentication on one shared, unmanaged device. AWS Amplify Gen 2
+      (region <code>ap-southeast-2</code>) is only ever in the loop for enrollment and
+      refresh — every sign-in after that runs entirely on-device, with the network off.
+      Click any highlighted box for what that component is; click a card below the diagram
+      for the full step-by-step flow it's part of.
+    </p>
+  </header>
+
+  <div class="legend" aria-hidden="true">
+    <span class="legend-item"><span class="swatch" style="background:var(--client)"></span>Client / device UI</span>
+    <span class="legend-item"><span class="swatch" style="background:var(--auth)"></span>Auth</span>
+    <span class="legend-item"><span class="swatch" style="background:var(--data)"></span>Backend data &amp; API plane</span>
+    <span class="legend-item"><span class="swatch" style="background:var(--crypto)"></span>Crypto &amp; local key storage</span>
+  </div>
+  <p style="margin:-8px 0 28px;font-size:12px;color:var(--text-faint);line-height:1.5;max-width:68ch;">
+    Icon color follows AWS's own service-family palette where a box is an AWS resource —
+    compute orange, database blue, security red — regardless of theme. The outline color is
+    the subsystem lane from the legend above. Plain (non-outlined) boxes are UI states, not
+    separate components, and aren't clickable.
+  </p>
+
+  <figure>
+    <div class="diagram-wrap">
+<svg viewBox="0 0 1160 1200" role="img" aria-label="Architecture diagram. At the top, RosterScreen is the app's real entry point, branching into two lanes. The left lane, unlocking an existing profile, runs entirely on-device: a PIN prompt feeds LocalUnlockService, which opens EncryptedPartitionStore to recover a PIN-wrapped enrollment token, which OfflineVerifier then checks -- signature, expiry, device ID, epoch, and a challenge-response -- with no network call, showing PASS or FAIL on screen. The right lane, adding a person, is the one online-only path: real Cognito sign-in, then an AppSync enroll mutation, resolved by a Lambda that signs a token via a KMS issuer key and writes a row to the DeviceEnrollments DynamoDB table, returning the signed token to the device. Both lanes share one crypto cluster at the bottom: DeviceIdentityService and UserIdentityService, each backed by Android Keystore or iOS Secure Enclave, supplying the public keys enrollment sends to the server and the hardware-backed signature offline verification's challenge-response step needs.">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-faint)"></path>
+        </marker>
+
+        <g id="icoMobile">
+          <rect x="6" y="3" width="8" height="14" rx="1.4" fill="none" stroke="#fff" stroke-width="1.5"></rect>
+          <line x1="8.5" y1="14.6" x2="11.5" y2="14.6" stroke="#fff" stroke-width="1.3" stroke-linecap="round"></line>
+        </g>
+        <g id="icoLock">
+          <rect x="5" y="9" width="10" height="8" rx="1.6" fill="none" stroke="#fff" stroke-width="1.5"></rect>
+          <path d="M7,9 L7,6.3 A3,3 0 0 1 13,6.3 L13,9" fill="none" stroke="#fff" stroke-width="1.5"></path>
+          <circle cx="10" cy="12.6" r="1.1" fill="#fff"></circle>
+        </g>
+        <g id="icoKey">
+          <circle cx="7" cy="7" r="3.4" fill="none" stroke="#fff" stroke-width="1.5"></circle>
+          <path d="M9.3,9.3 L16,16 M13,13 L15.2,15.2 M11.4,14.6 L13,16.2" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"></path>
+        </g>
+        <g id="icoShield">
+          <path d="M10,3.3 L16,5.8 L16,9.8 C16,13.8 13.2,16.2 10,17.3 C6.8,16.2 4,13.8 4,9.8 L4,5.8 Z" fill="none" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"></path>
+          <path d="M7,10 L9.1,12.1 L13.2,7.3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+        <g id="icoSync">
+          <path d="M4.5,8 A6,6 0 0 1 15,6.6" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"></path>
+          <path d="M12.6,4 L15,6.6 L12,8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M15.5,12 A6,6 0 0 1 5,13.4" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"></path>
+          <path d="M7.4,16 L5,13.4 L8,12" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+        <g id="icoLambda">
+          <path d="M5,16 L10,4 L15,16 M8,10.5 L6.2,16" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+        <g id="icoDynamo">
+          <ellipse cx="10" cy="5.2" rx="6" ry="2.1" fill="none" stroke="#fff" stroke-width="1.4"></ellipse>
+          <path d="M4,5.2 L4,14.8 A6,2.1 0 0 0 16,14.8 L16,5.2" fill="none" stroke="#fff" stroke-width="1.4"></path>
+          <path d="M4,10 A6,2.1 0 0 0 16,10" fill="none" stroke="#fff" stroke-width="1.4"></path>
+        </g>
+        <g id="icoVerify">
+          <path d="M4,10 L8,14 L16,5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+      </defs>
+
+      <!-- ============ TOP: ROSTERSCREEN -> components/roster-screen.html ============ -->
+      <a class="node-link" href="components/roster-screen.html" aria-label="Open the RosterScreen component page">
+      <g>
+        <rect class="node-box" x="380" y="20" width="400" height="64" rx="8" style="fill:var(--node-fill);stroke:var(--client)" stroke-width="2"></rect>
+        <rect x="392" y="41" width="22" height="22" rx="5" style="fill:#232F3E"></rect>
+        <use href="#icoMobile" x="393" y="42" width="20" height="20"></use>
+        <text x="424" y="47" style="font-family:'IBM Plex Mono';font-size:14px;font-weight:700;fill:var(--client)">RosterScreen</text>
+        <text x="424" y="66" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">the app's real entry point — one name per enrolled person</text>
+      </g>
+      </a>
+
+      <line x1="470" y1="84" x2="260" y2="150" style="stroke:var(--client)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+      <text x="330" y="100" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--client)">tap a name</text>
+
+      <line x1="690" y1="84" x2="880" y2="150" style="stroke:var(--auth)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+      <text x="800" y="100" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--auth)">"Add a person"</text>
+
+      <!-- ============ LANE LABELS ============ -->
+      <text x="60" y="138" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.05em;fill:var(--client)">UNLOCK AN EXISTING PROFILE — offline, on-device</text>
+      <text x="660" y="138" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.05em;fill:var(--auth)">ADD A PERSON — the one online-only surface</text>
+
+      <!-- ============ LEFT LANE ============ -->
+      <g>
+        <rect x="60" y="150" width="400" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3" stroke-dasharray="4 4"></rect>
+        <text x="260" y="169" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">PIN prompt dialog</text>
+        <text x="260" y="185" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">checked against PinLockoutService first (Task 9)</text>
+      </g>
+      <line x1="260" y1="196" x2="260" y2="210" style="stroke:var(--client)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+
+      <a class="node-link" href="components/local-unlock-service.html" aria-label="Open the LocalUnlockService component page">
+      <g>
+        <rect class="node-box" x="60" y="210" width="400" height="60" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <rect x="72" y="230" width="20" height="20" rx="4.5" style="fill:#DD344C"></rect>
+        <use href="#icoLock" x="73" y="231" width="18" height="18"></use>
+        <text x="102" y="236" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;fill:var(--crypto)">LocalUnlockService</text>
+        <text x="102" y="253" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">.unlock(userId, pin) → token or null</text>
+      </g>
+      </a>
+      <line x1="260" y1="270" x2="260" y2="300" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+      <text x="290" y="290" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">opens with K_user</text>
+
+      <a class="node-link" href="components/encrypted-partition-store.html" aria-label="Open the EncryptedPartitionStore component page">
+      <g>
+        <rect class="node-box" x="60" y="300" width="400" height="58" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <rect x="72" y="319" width="20" height="20" rx="4.5" style="fill:#7AA116"></rect>
+        <use href="#icoLock" x="73" y="320" width="18" height="18"></use>
+        <text x="102" y="325" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;fill:var(--crypto)">EncryptedPartitionStore</text>
+        <text x="102" y="342" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">sqlite3mc-ciphered SQLite, one file per person</text>
+      </g>
+      </a>
+      <line x1="260" y1="358" x2="260" y2="390" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+      <text x="300" y="378" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">recovered token</text>
+
+      <a class="node-link" href="components/offline-verifier.html" aria-label="Open the OfflineVerifier component page">
+      <g>
+        <rect class="node-box" x="60" y="390" width="400" height="72" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="2"></rect>
+        <rect x="72" y="412" width="22" height="22" rx="5" style="fill:#DD344C"></rect>
+        <use href="#icoVerify" x="73" y="413" width="20" height="20"></use>
+        <text x="104" y="419" style="font-family:'IBM Plex Mono';font-size:13.5px;font-weight:700;fill:var(--crypto)">OfflineVerifier</text>
+        <text x="104" y="438" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">signature → expiry → device-id → epoch → challenge</text>
+        <text x="104" y="452" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">zero network calls, enforced by construction</text>
+      </g>
+      </a>
+      <line x1="260" y1="462" x2="260" y2="494" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+
+      <g>
+        <rect x="60" y="494" width="400" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3" stroke-dasharray="4 4"></rect>
+        <text x="260" y="521" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:11px;fill:var(--text-dim)">ProfileHomeScreen shows PASS / FAIL on screen</text>
+      </g>
+
+      <!-- ============ RIGHT LANE ============ -->
+      <g>
+        <rect x="660" y="150" width="440" height="46" rx="7" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3" stroke-dasharray="4 4"></rect>
+        <text x="880" y="169" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">AuthGate → LoginScreen</text>
+        <text x="880" y="185" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--text-faint)">greyed out when the device is offline</text>
+      </g>
+      <line x1="880" y1="196" x2="880" y2="210" style="stroke:var(--auth)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+
+      <a class="node-link" href="components/cognito.html" aria-label="Open the Cognito User Pool component page">
+      <g>
+        <rect class="node-box" x="660" y="210" width="440" height="60" rx="8" style="fill:var(--node-fill);stroke:var(--auth)" stroke-width="1.8"></rect>
+        <rect x="672" y="230" width="20" height="20" rx="4.5" style="fill:#DD344C"></rect>
+        <use href="#icoShield" x="673" y="231" width="18" height="18"></use>
+        <text x="702" y="236" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;fill:var(--auth)">Cognito User Pool</text>
+        <text x="702" y="253" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">real SRP sign-in — the one moment this app is online</text>
+      </g>
+      </a>
+      <line x1="880" y1="270" x2="880" y2="300" style="stroke:var(--auth)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+      <text x="920" y="290" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--auth)">ID token</text>
+
+      <a class="node-link" href="components/appsync.html" aria-label="Open the AppSync GraphQL API component page">
+      <g>
+        <rect class="node-box" x="660" y="300" width="440" height="64" rx="8" style="fill:var(--node-fill);stroke:var(--data)" stroke-width="2"></rect>
+        <rect x="672" y="322" width="22" height="22" rx="5" style="fill:#D9257A"></rect>
+        <use href="#icoSync" x="673" y="323" width="20" height="20"></use>
+        <text x="704" y="329" style="font-family:'IBM Plex Mono';font-size:13.5px;font-weight:700;fill:var(--data)">AppSync — enroll mutation</text>
+        <text x="704" y="348" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">Cognito-authorized, resolved by a direct Lambda resolver</text>
+      </g>
+      </a>
+      <line x1="880" y1="364" x2="880" y2="394" style="stroke:var(--data)" stroke-width="1.6" marker-end="url(#arrow)"></line>
+
+      <a class="node-link" href="components/enroll-lambda.html" aria-label="Open the enrollment Lambda component page">
+      <g>
+        <rect class="node-box" x="660" y="394" width="440" height="60" rx="8" style="fill:var(--node-fill);stroke:var(--data)" stroke-width="1.8"></rect>
+        <rect x="672" y="414" width="20" height="20" rx="4.5" style="fill:#ED7100"></rect>
+        <use href="#icoLambda" x="672" y="414" width="20" height="20"></use>
+        <text x="702" y="420" style="font-family:'IBM Plex Mono';font-size:12.5px;font-weight:600;fill:var(--data)">enroll Lambda</text>
+        <text x="702" y="437" style="font-family:'IBM Plex Sans';font-size:10px;fill:var(--text-dim)">reads/preserves epoch, hand-builds an ES256 JWS</text>
+      </g>
+      </a>
+      <line x1="800" y1="454" x2="740" y2="484" style="stroke:var(--crypto)" stroke-width="1.5" marker-end="url(#arrow)"></line>
+      <line x1="960" y1="454" x2="1020" y2="484" style="stroke:var(--data)" stroke-width="1.5" marker-end="url(#arrow)"></line>
+
+      <a class="node-link" href="components/kms.html" aria-label="Open the KMS issuer signing key component page">
+      <g>
+        <rect class="node-box" x="660" y="484" width="220" height="60" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <rect x="672" y="504" width="20" height="20" rx="4.5" style="fill:#DD344C"></rect>
+        <use href="#icoKey" x="672" y="504" width="20" height="20"></use>
+        <text x="702" y="510" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">KMS issuer key</text>
+        <text x="702" y="527" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">ECC_NIST_P256, SIGN_VERIFY only</text>
+      </g>
+      </a>
+
+      <a class="node-link" href="components/dynamodb.html" aria-label="Open the DeviceEnrollments DynamoDB table component page">
+      <g>
+        <rect class="node-box" x="900" y="484" width="200" height="60" rx="8" style="fill:var(--node-fill);stroke:var(--data)" stroke-width="1.8"></rect>
+        <rect x="912" y="504" width="20" height="20" rx="4.5" style="fill:#3B48CC"></rect>
+        <use href="#icoDynamo" x="912" y="504" width="20" height="20"></use>
+        <text x="942" y="510" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--data)">DeviceEnrollments</text>
+        <text x="942" y="527" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">PK deviceId, SK userId</text>
+      </g>
+      </a>
+
+      <!-- return path: signed token back up to the device -->
+      <path d="M660,424 C 570,424 560,180 590,90" style="fill:none;stroke:var(--data)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow)"></path>
+      <rect x="515" y="276" width="150" height="30" rx="4" style="fill:var(--surface)"></rect>
+      <text x="590" y="289" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--data)">signed token,</text>
+      <text x="590" y="302" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--data)">verified locally</text>
+
+      <!-- ============ SHARED CRYPTO CLUSTER ============ -->
+      <g>
+        <rect x="230" y="600" width="700" height="190" rx="10" style="fill:var(--surface-2);stroke:var(--crypto)" stroke-width="1.4" stroke-dasharray="6 4"></rect>
+        <text x="250" y="626" style="font-family:'IBM Plex Mono';font-size:11.5px;font-weight:600;letter-spacing:0.06em;fill:var(--crypto)">DEVICE-SIDE CRYPTO — Android Keystore / iOS Secure Enclave</text>
+        <text x="250" y="644" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-faint)">private keys never leave this layer; only signatures and public keys cross it</text>
+      </g>
+
+      <a class="node-link" href="components/device-identity-service.html" aria-label="Open the DeviceIdentityService component page">
+      <g>
+        <rect class="node-box" x="260" y="662" width="310" height="70" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <rect x="272" y="683" width="20" height="20" rx="4.5" style="fill:#DD344C"></rect>
+        <use href="#icoLock" x="273" y="684" width="18" height="18"></use>
+        <text x="302" y="690" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">DeviceIdentityService</text>
+        <text x="302" y="707" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">Trust Anchor 2 — one ECDSA P-256</text>
+        <text x="302" y="720" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">keypair per device, no local factor</text>
+      </g>
+      </a>
+
+      <a class="node-link" href="components/user-identity-service.html" aria-label="Open the UserIdentityService component page">
+      <g>
+        <rect class="node-box" x="590" y="662" width="310" height="70" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <rect x="602" y="683" width="20" height="20" rx="4.5" style="fill:#DD344C"></rect>
+        <use href="#icoLock" x="603" y="684" width="18" height="18"></use>
+        <text x="632" y="690" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">UserIdentityService</text>
+        <text x="632" y="707" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">Trust Anchor 3 — one keypair per</text>
+        <text x="632" y="720" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">enrolled person; signs the challenge</text>
+      </g>
+      </a>
+
+      <!-- cluster to left lane (challenge-response) -->
+      <path d="M420,662 C 420,560 300,500 220,440" style="fill:none;stroke:var(--crypto)" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arrow)"></path>
+      <rect x="230" y="540" width="130" height="30" rx="4" style="fill:var(--surface)"></rect>
+      <text x="295" y="553" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">signs the</text>
+      <text x="295" y="565" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">challenge nonce</text>
+
+      <!-- cluster to right lane (enrollment pubkeys) -->
+      <path d="M740,662 C 740,560 850,470 880,364" style="fill:none;stroke:var(--crypto)" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arrow)"></path>
+      <rect x="800" y="540" width="150" height="30" rx="4" style="fill:var(--surface)"></rect>
+      <text x="875" y="553" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">device + user public</text>
+      <text x="875" y="565" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">keys, at enroll time</text>
+
+    </svg>
+    </div>
+    <figcaption>
+      Only the right lane ever touches the network. The left lane — the actual hard
+      requirement this project exists to prove — runs with the device's radios physically off;
+      see the <a href="flows/airplane-mode.html">Airplane Mode Setup and Usage</a> flow below
+      for how that was verified, not just claimed.
+    </figcaption>
+  </figure>
+
+  <h2 class="section-heading">Request flows</h2>
+  <p style="margin:-8px 0 20px;font-size:13.5px;color:var(--text-faint);max-width:68ch;">
+    Each of these has a defined start and end point, verified step by step against the real,
+    committed source — not inferred from the diagram above.
+  </p>
+  <div class="flow-grid">
+
+    <a class="flow-card" href="flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Auth · Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>
+        Sign in → device/user keypair generation → the <code>enroll</code> mutation → KMS
+        signs a token → <code>DeviceEnrollments</code> written → the signed token verified
+        locally against the issuer public key baked into the app.
+      </p>
+      <span class="more">Full flow →</span>
+    </a>
+
+    <a class="flow-card" href="flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Crypto · Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>
+        Signature → expiry → device-id → epoch → challenge-response, entirely local.
+        <code>OfflineVerifier</code> makes zero network calls by construction — no
+        <code>http</code> or Amplify import anywhere in that class.
+      </p>
+      <span class="more">Full flow →</span>
+    </a>
+
+    <a class="flow-card" href="flows/encrypted-storage.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Crypto · Storage</div>
+      <h3>Encrypted Storage — the PIN gate</h3>
+      <p>
+        A PIN wraps each profile's own enrollment token, Argon2id-derived, inside their own
+        <code>K_user</code>-encrypted partition. Two independent layers: raw file theft alone
+        fails, device compromise alone fails — only both together succeed.
+      </p>
+      <span class="more">Full flow →</span>
+    </a>
+
+    <a class="flow-card" href="flows/airplane-mode.html">
+      <div class="cat"><span class="swatch" style="background:var(--client)"></span>Client · The Payoff</div>
+      <h3>Airplane Mode Setup and Usage</h3>
+      <p>
+        The literal real-world procedure — and what was actually run against a real Samsung
+        Galaxy A06 this session, airplane mode genuinely on — that makes this whole project's
+        core claim real rather than theoretical.
+      </p>
+      <span class="more">Full flow →</span>
+    </a>
+
+  </div>
+
+  <h2 class="section-heading">Operational notes</h2>
+  <div class="notes-grid">
+    <div>
+      <h4>Trust anchors</h4>
+      <ul>
+        <li>Issuer key (KMS) — proves a token came from the real identity service; private key never leaves KMS.</li>
+        <li>Device keypair — ties every token to <em>this</em> physical device.</li>
+        <li>Per-user credential — bound to one person, on one device, gated by their own PIN.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Real storage, verified not assumed</h4>
+      <ul>
+        <li><code>sqlite3</code> 3.x's <code>sqlite3mc</code> cipher build — self-contained, no OpenSSL dependency (unlike the now-EOL <code>sqlcipher_flutter_libs</code>).</li>
+        <li>Verified with raw-bytes ciphertext checks on both Windows and the real Android deployment target.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>What's proven, not just built</h4>
+      <ul>
+        <li>Offline sign-in demonstrated with the device's network genuinely disabled, confirmed via the status bar and <code>adb</code>, not just code review.</li>
+        <li>Cross-profile isolation demonstrated by actually trying one profile's PIN against another's data.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer class="colophon">
+    amplify/backend.ts · region ap-southeast-2 · see docs/roster-vault/stories/story-checkpoint-mvp.md for full task-by-task verification detail
+  </footer>
+
+</div>
+</body>
+</html>

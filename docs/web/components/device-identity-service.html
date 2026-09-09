@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeviceIdentityService — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>DeviceIdentityService</h1>
+    <p class="dek">
+      Trust Anchor 2 — one ECDSA P-256 keypair per physical device, generated once, on first
+      run.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Dart service, via the <code>biometric_signature</code> plugin</dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/services/device_identity_service.dart</code></dd></div>
+    <div><dt>Key alias</dt><dd><code>roster_vault_device_key</code>, <code>requireAuthentication: false</code></dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      Hardware-backed via Android Keystore/StrongBox or iOS Secure Enclave.
+      <code>requireAuthentication: false</code> is deliberate — this key isn't gated by a
+      person's local factor, only by the hardware itself; Trust Anchor 3
+      (<a href="user-identity-service.html">UserIdentityService</a>) is the per-person,
+      PIN/biometric-gated credential. The plugin's <code>createKeys</code> silently
+      <em>replaces</em> an existing key under the same alias unless checked for first — every
+      call site here checks <code>getKeyInfo</code> before ever calling <code>createKeys</code>,
+      so a routine app relaunch can't rotate the device key out from under an already-issued
+      token.
+    </p>
+    <p>
+      <strong>A real, fully-diagnosed bug, not a plugin defect:</strong> on real Android
+      hardware this failed with <code>BiometricError.unknown "Foreground activity required"</code>
+      even though the app was confirmed fully foregrounded and drawn. Root cause: the plugin
+      requires <code>MainActivity</code> to extend <code>FlutterFragmentActivity</code>, not
+      Flutter's template-default <code>FlutterActivity</code> — documented in the plugin's own
+      README, just never applied in this project's original scaffolding. Fixed; confirmed
+      working with a real Device ID and a genuinely short EC/P-256-shaped public key (not the
+      long RSA-2048 SPKI this plugin falls back to on Windows, a dev-convenience platform only).
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/enrollment.html">
+      <div class="cat"><span class="swatch" style="background:var(--auth)"></span>Enrollment</div>
+      <h3>Enrollment — the one online step</h3>
+      <p>Its public key is one of the two sent to the <code>enroll</code> mutation.</p>
+    </a>
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>Its <code>deviceId</code> is checked against the token's <code>device_id</code> claim.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/services/device_identity_service.dart</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OfflineVerifier — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>OfflineVerifier</h1>
+    <p class="dek">
+      "The actual hard requirement" — everything this whole project exists to prove happens
+      inside this one class.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Dart service class</dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/services/offline_verifier.dart</code></dd></div>
+    <div><dt>Network calls</dt><dd>Zero — no <code>http</code>/Amplify import, enforced by construction</dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      Runs every check in order, short-circuiting on the first failure: signature (via
+      <code>dart_jsonwebtoken</code>, against the issuer public key baked into the app at
+      build time) → expiry → device-id → epoch → challenge-response. The epoch check compares
+      against a value separately persisted on-device at the last successful enroll/refresh —
+      deliberately not the token's own epoch claim, which would make the check a tautology
+      that always passes.
+    </p>
+    <p>
+      The challenge-response step signs a fresh random nonce with the person's hardware-backed
+      key (<code>UserIdentityService.signChallenge</code>) and verifies it against their stored
+      public key — proving possession of the private key, not just a copied token blob.
+      <code>biometric_signature</code> signs via plain JCA <code>SHA256withECDSA</code>
+      (confirmed by reading its Android source directly, not guessed) — always DER-encoded, so
+      the signer converts to the fixed-width 64-byte raw <code>r‖s</code> format JWS needs,
+      the same conversion the enrollment Lambda already does for KMS's own DER output.
+    </p>
+    <p>
+      Proven with 11 table-driven tests against real openssl-generated P-256 keypairs — every
+      failure mode independently, two meaningful combinations, and the epoch comparison
+      <em>direction</em> tested both ways (the exact one-character bug class this project's own
+      review checklist calls out by name). Demonstrated on real hardware with the device's
+      network genuinely disabled — see the Airplane Mode flow.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>The full check chain, in order.</p>
+    </a>
+    <a class="flow-card" href="../flows/airplane-mode.html">
+      <div class="cat"><span class="swatch" style="background:var(--client)"></span>The Payoff</div>
+      <h3>Airplane Mode Setup and Usage</h3>
+      <p>Where this class ran for real with the network physically off.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/services/offline_verifier.dart · test/offline_verifier_test.dart</footer>
+</div>
+</body>
+</html>

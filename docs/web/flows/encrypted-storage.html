@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encrypted Storage — the PIN Gate — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Request Flow</span>
+    <h1>Encrypted Storage — the PIN Gate</h1>
+    <p class="dek">
+      Two independent layers, not one. Raw file theft alone fails. Device compromise alone
+      fails. Only both together succeed.
+    </p>
+  </header>
+
+  <div class="detail-body">
+    <p>
+      <code>K_user = HKDF(K_device, user_id)</code> — the architecture's literal formula —
+      has no PIN in it. Taken alone, anyone who can read <code>K_device</code> (itself only
+      OS-encrypted) could derive the same <code>K_user</code> without ever entering a PIN.
+      Resolved by giving the PIN a real, separate job: it wraps the enrollment token itself,
+      as a row <em>inside</em> the <code>K_user</code>-encrypted partition — so recovering the
+      real secret needs both the device's own key material <em>and</em> the correct PIN.
+    </p>
+    <p>
+      Verified live, end to end, on a real Samsung Galaxy A06 with two independently-enrolled
+      Cognito profiles and two different PINs — not just two profiles that each independently
+      worked, but one profile's PIN actually tried against the other's data and watched fail.
+    </p>
+  </div>
+
+  <div class="legend" aria-hidden="true" style="margin-top:0;">
+    <span class="legend-item">→ solid = call</span>
+    <span class="legend-item">⇢ dashed = return</span>
+  </div>
+
+  <figure>
+    <div class="diagram-wrap">
+<svg viewBox="0 0 1090 720" role="img" aria-label="Two-phase diagram of the encrypted storage PIN gate. Phase one, setup: LocalUnlockService derives the device-based partition key K_user, asks PinService to Argon2id-wrap the enrollment token with the entered PIN, and stores that wrapped row inside the K_user-encrypted partition opened via EncryptedPartitionStore. Phase two, unlock: LocalUnlockService re-derives the same K_user, which does not depend on the PIN, opens the same partition, reads the wrapped row, and asks PinService to unwrap it with the entered PIN. A wrong PIN returns null. The correct PIN returns the real recovered token. A separate profile's PIN, tried against this partition, also returns null, demonstrating cross-profile isolation.">
+      <defs>
+        <marker id="arrowS" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" style="fill:var(--text-faint)"></path>
+        </marker>
+      </defs>
+
+      <g><rect x="20" y="20" width="180" height="52" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <text x="110" y="42" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:11.5px;font-weight:600;fill:var(--crypto)">LocalUnlockService</text>
+        <text x="110" y="59" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">setUpPin / unlock</text></g>
+      <g><rect x="235" y="20" width="170" height="52" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <text x="320" y="42" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">DeviceMasterKeyService</text>
+        <text x="320" y="59" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">+ PartitionKeyService</text></g>
+      <g><rect x="440" y="20" width="200" height="52" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <text x="540" y="42" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;fill:var(--crypto)">EncryptedPartitionStore</text>
+        <text x="540" y="59" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">sqlite3mc</text></g>
+      <g><rect x="675" y="20" width="150" height="52" rx="8" style="fill:var(--node-fill);stroke:var(--crypto)" stroke-width="1.8"></rect>
+        <text x="750" y="42" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;fill:var(--crypto)">PinService</text>
+        <text x="750" y="59" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--text-dim)">Argon2id + AES-GCM</text></g>
+
+      <g style="stroke:var(--border)" stroke-width="1.2" stroke-dasharray="3 3">
+        <line x1="110" y1="72" x2="110" y2="700"></line>
+        <line x1="320" y1="72" x2="320" y2="700"></line>
+        <line x1="540" y1="72" x2="540" y2="700"></line>
+        <line x1="750" y1="72" x2="750" y2="700"></line>
+      </g>
+
+      <text x="20" y="100" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.04em;fill:var(--text-faint)">PHASE 1 — SET UP (first time this person's PIN is chosen on this device)</text>
+      <line x1="115" y1="128" x2="315" y2="128" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="215" y="120" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">deriveUserPartitionKey(K_device, userId)</text>
+      <line x1="315" y1="160" x2="115" y2="160" style="stroke:var(--crypto)" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrowS)"></line>
+      <text x="215" y="152" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">K_user — deterministic, not PIN-derived</text>
+
+      <line x1="115" y1="194" x2="745" y2="194" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="430" y="186" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">wrap(pin, enrollmentToken)</text>
+      <line x1="745" y1="226" x2="115" y2="226" style="stroke:var(--crypto)" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrowS)"></line>
+      <text x="430" y="218" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">PinWrappedData {salt, nonce, cipherText, mac}</text>
+
+      <line x1="115" y1="260" x2="535" y2="260" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="325" y="252" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">open(dbPath, K_user); INSERT wrapped row</text>
+
+      <text x="20" y="330" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;letter-spacing:0.04em;fill:var(--text-faint)">PHASE 2 — UNLOCK (every subsequent sign-in)</text>
+      <line x1="115" y1="358" x2="315" y2="358" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="215" y="350" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">re-derive the same K_user</text>
+
+      <line x1="115" y1="392" x2="535" y2="392" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="325" y="384" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">open + SELECT wrapped row</text>
+
+      <line x1="115" y1="426" x2="745" y2="426" style="stroke:var(--crypto)" stroke-width="1.6" marker-end="url(#arrowS)"></line>
+      <text x="430" y="418" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9px;fill:var(--crypto)">unwrap(pin, wrapped)</text>
+
+      <rect x="230" y="450" width="620" height="126" rx="8" style="fill:var(--surface-2);stroke:var(--border)" stroke-width="1.3"></rect>
+      <text x="540" y="476" text-anchor="middle" style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;fill:var(--text-dim)">verified live, real hardware, 2026-09-10</text>
+      <text x="540" y="500" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">Profile A, PIN 1234 → PASS, real token recovered</text>
+      <text x="540" y="520" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">Profile A, wrong PIN 9999 → "Wrong PIN — rejected"</text>
+      <text x="540" y="540" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--text-dim)">Profile B, PIN 1234 (Profile A's PIN) → "Wrong PIN — rejected"</text>
+      <text x="540" y="560" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:10.5px;fill:var(--crypto)">Profile B, PIN 5678 (its own) → PASS, its own different token recovered</text>
+
+      <line x1="750" y1="602" x2="115" y2="602" style="stroke:var(--crypto)" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#arrowS)"></line>
+      <text x="430" y="594" text-anchor="middle" style="font-family:'IBM Plex Sans';font-size:9.5px;fill:var(--crypto)">token, or null — never a throw for a wrong PIN</text>
+
+    </svg>
+    </div>
+    <figcaption>
+      Cross-profile isolation, demonstrated by literally trying one profile's PIN against
+      another's data — not just two profiles that each independently worked.
+    </figcaption>
+  </figure>
+
+  <footer class="colophon">
+    lib/services/local_unlock_service.dart · lib/services/pin_service.dart · lib/services/partition_key_service.dart · lib/services/encrypted_partition_store.dart
+  </footer>
+</div>
+</body>
+</html>

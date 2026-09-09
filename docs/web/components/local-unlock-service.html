@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LocalUnlockService — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="../index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Crypto · Component</span>
+    <h1>LocalUnlockService</h1>
+    <p class="dek">
+      Ties a person's PIN to their own encrypted partition — the fourth on-screen milestone
+      (Task 6), a real PIN gate, not a UI-only check.
+    </p>
+  </header>
+
+  <dl class="facts-strip">
+    <div><dt>Type</dt><dd>Dart service class</dd></div>
+    <div><dt>Defined in</dt><dd><code>lib/services/local_unlock_service.dart</code></dd></div>
+    <div><dt>Key methods</dt><dd><code>isSetUp</code>, <code>setUpPin</code>, <code>unlock</code></dd></div>
+  </dl>
+
+  <div class="detail-body">
+    <p>
+      A deliberate, documented design choice: the architecture's literal
+      <code>K_user = HKDF(K_device, user_id)</code> formula has no PIN in it — anyone who can
+      read <code>K_device</code> can derive the same <code>K_user</code> without ever entering
+      a PIN, in tension with the architecture doc's own prose ("can't read another profile's
+      data without that profile's own local factor"). Resolved by giving the PIN a genuine,
+      separate job: it PIN-wraps the enrollment token itself (via <code>PinService</code>,
+      Argon2id-derived — real key material, not a redundant gate) as a row <em>inside</em> the
+      <code>K_user</code>-encrypted partition, rather than being mixed into the database key.
+      Raw file theft alone needs <code>K_device</code>; device compromise alone needs the PIN;
+      only both together succeed.
+    </p>
+    <p>
+      <code>unlock()</code> always succeeds at <em>opening</em> the partition — <code>K_user</code>
+      doesn't depend on the PIN, by design — the actual gate is entirely in the PIN-unwrap
+      step afterward. Never throws for a wrong PIN; returns <code>null</code>, the same
+      contract <code>PinService.unwrap</code> already uses.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Used in</h2>
+  <div class="used-in-grid">
+    <a class="flow-card" href="../flows/encrypted-storage.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Encrypted Storage</div>
+      <h3>Encrypted Storage — the PIN gate</h3>
+      <p>The setup and unlock steps, verified with two independently-enrolled profiles.</p>
+    </a>
+    <a class="flow-card" href="../flows/offline-sign-in.html">
+      <div class="cat"><span class="swatch" style="background:var(--crypto)"></span>Offline Sign-In</div>
+      <h3>Offline Sign-In — the core hard part</h3>
+      <p>Recovers the token <code>OfflineVerifier</code> then checks.</p>
+    </a>
+  </div>
+
+  <footer class="colophon">lib/services/local_unlock_service.dart</footer>
+</div>
+</body>
+</html>
