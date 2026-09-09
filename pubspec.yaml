@@ -50,6 +50,9 @@ dependencies:
   # app, per docs/roster-vault/Architecture/Enrollment Flow.md step 1.
   amplify_flutter: ^2.11.0
   amplify_auth_cognito: ^2.11.0
+  cryptography: ^2.9.0
+  http: ^1.6.0
+  dart_jsonwebtoken: ^3.4.1
 
 dev_dependencies:
   flutter_test:

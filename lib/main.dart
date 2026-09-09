@@ -8,6 +8,10 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'screens/login_screen.dart';
 import 'services/device_identity_service.dart';
+import 'services/enrollment_service.dart';
+import 'services/issuer_public_key.dart';
+import 'services/token_verifier.dart';
+import 'services/user_identity_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -128,6 +132,14 @@ class DeviceDebugScreen extends StatefulWidget {
 
 class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   late final Future<DeviceIdentity> _deviceIdentity;
+  final _userIdentityService = UserIdentityService();
+  final _enrollmentService = EnrollmentService();
+  final _tokenVerifier = const TokenVerifier();
+
+  bool _isEnrolling = false;
+  String? _enrollError;
+  EnrollmentResult? _enrollmentResult;
+  VerifiedTokenClaims? _verifiedClaims;
 
   @override
   void initState() {
@@ -139,6 +151,91 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
         'RSA via Windows Hello/TPM, which requires a Windows Hello PIN to be configured on this '
         'machine — this platform is a dev convenience, not the deployment target (Android/iOS).',
       ),
+    );
+  }
+
+  /// Task 4c — generate this person's per-device keypair, call the `enroll`
+  /// mutation (Task 4a) with it and this device's already-established
+  /// identity (Task 3), then verify the returned token's signature locally
+  /// against the issuer public key baked in at build time (Task 4a). Purely
+  /// a debug-view trigger for now, per the story checkpoint's Task 4c scope
+  /// -- the real roster/enrollment UI is Task 7.
+  Future<void> _enroll(DeviceIdentity deviceIdentity) async {
+    final user = widget.signedInUser;
+    if (user == null) return;
+    setState(() {
+      _isEnrolling = true;
+      _enrollError = null;
+    });
+    try {
+      final userPubKey = await _userIdentityService.ensureUserKeyPair(user.userId).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException(
+          'User key generation did not respond in time. On Windows, key creation can trigger a '
+          'Windows Hello consent prompt (CredentialUIBroker) with no visible dialog if no Windows '
+          'Hello PIN is configured on this machine -- it hangs rather than failing. Same platform '
+          'caveat as the device key (see DeviceDebugScreen.initState): a dev convenience, not the '
+          'deployment target.',
+        ),
+      );
+      final result = await _enrollmentService.enroll(
+        deviceId: deviceIdentity.deviceId,
+        devicePubKey: deviceIdentity.publicKeyPem,
+        userPubKey: userPubKey,
+      );
+      final verified = await _tokenVerifier.verify(result.token, issuerPublicKeyPem: issuerPublicKeyPem);
+      setState(() {
+        _enrollmentResult = result;
+        _verifiedClaims = verified;
+      });
+    } catch (e) {
+      setState(() => _enrollError = 'Enrollment failed: $e');
+    } finally {
+      if (mounted) setState(() => _isEnrolling = false);
+    }
+  }
+
+  Widget _buildEnrollmentSection(DeviceIdentity identity) {
+    if (widget.signedInUser == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text('Enrollment', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            key: const Key('enrollButton'),
+            onPressed: _isEnrolling ? null : () => _enroll(identity),
+            child: _isEnrolling
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Enroll this device'),
+          ),
+        ),
+        if (_enrollError != null) ...[
+          const SizedBox(height: 12),
+          Text(_enrollError!, style: const TextStyle(color: Colors.red)),
+        ],
+        if (_enrollmentResult != null && _verifiedClaims != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            _verifiedClaims!.signatureValid ? 'Signature: VALID' : 'Signature: INVALID',
+            key: const Key('enrollmentSignatureStatus'),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: _verifiedClaims!.signatureValid ? Colors.green : Colors.red,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text('Decoded claims:'),
+          SelectableText(
+            const JsonEncoder.withIndent('  ').convert(_verifiedClaims!.claims),
+            key: const Key('enrollmentClaimsText'),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          ),
+        ],
+      ],
     );
   }
 
@@ -178,6 +275,7 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
                   const SizedBox(height: 8),
                   const Text('Device public key:'),
                   SelectableText(identity.publicKeyPem, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  _buildEnrollmentSection(identity),
                 ],
               ],
             );
