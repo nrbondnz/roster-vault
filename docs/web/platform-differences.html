@@ -35,10 +35,33 @@
       has held everywhere else, which is proof on the device. The Android row cleared both
       stages: it looked correct on a first read of the source too, and was still wrong until
       it was actually run — see
-      <a href="components/device-identity-service.html">DeviceIdentityService</a>. Nothing on
-      the iOS side has cleared that second bar yet; no Mac has been available in this
-      environment to run it on.
+      <a href="components/device-identity-service.html">DeviceIdentityService</a>. A Mac is
+      now available; iOS build tooling (Xcode 26.6, CocoaPods 1.16.2, `pod install`) is
+      verified working, and the on-device rows below are in progress this session. Nothing
+      on the iOS side has cleared the second bar (real-device proof) yet.
     </p>
+  </div>
+
+  <h2 class="section-heading">iOS build status (2026-09-10)</h2>
+  <div class="notes-grid">
+    <div>
+      <h4>Toolchain &amp; CocoaPods</h4>
+      <ul>
+        <li><span class="status-badge verified">Verified</span> <code>flutter doctor</code> clean for iOS/Xcode; <code>pod install</code> completed (Podfile, Podfile.lock, xcconfig includes, and Runner's pbxproj all reflect it) — first real evidence <code>sqlite3mc</code> and every other pod resolve and build for iOS.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Simulator run</h4>
+      <ul>
+        <li><span class="status-badge pending">In progress</span> first debug build to "iPhone 17 Pro" simulator — confirms the app builds and boots on iOS, but the simulator has no Secure Enclave, so it cannot verify real device-key generation.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Real device (nigel's iPhone, wireless)</h4>
+      <ul>
+        <li><span class="status-badge pending">Blocked</span> not a code problem — Xcode's cached signing team (a Personal Team tied to a different Apple ID) doesn't match the intended Apple Developer account (<code>bondsfamily0007@gmail.com</code>). Fix is signing into Xcode → Settings → Accounts with that account and letting it re-provision <code>com.rostervault.rosterVault</code>; only then can the Secure Enclave key-generation and Keychain-survives-uninstall rows below actually clear the real-hardware bar.</li>
+      </ul>
+    </div>
   </div>
 
   <h2 class="section-heading">Device key generation</h2>
