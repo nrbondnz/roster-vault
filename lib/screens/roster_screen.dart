@@ -3,11 +3,14 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart';
+import '../services/clock_integrity_service.dart';
 import '../services/device_identity_service.dart';
 import '../services/enrollment_service.dart';
 import '../services/issuer_public_key.dart';
 import '../services/local_unlock_service.dart';
 import '../services/offline_verifier.dart';
+import '../services/pin_lockout_service.dart';
+import '../services/root_detection_service.dart';
 import '../services/roster_registry_service.dart';
 import '../services/user_identity_service.dart';
 
@@ -34,8 +37,11 @@ class RosterScreen extends StatefulWidget {
 class _RosterScreenState extends State<RosterScreen> {
   final _rosterRegistryService = RosterRegistryService();
   final _localUnlockService = LocalUnlockService();
+  final _pinLockoutService = PinLockoutService();
+  final _rootDetectionService = const RootDetectionService();
   late Future<List<RosterEntry>> _rosterFuture;
   bool _isOnline = false;
+  late final bool _isLikelyCompromised;
 
   @override
   void initState() {
@@ -45,6 +51,10 @@ class _RosterScreenState extends State<RosterScreen> {
     Connectivity().onConnectivityChanged.listen((results) {
       if (mounted) setState(() => _isOnline = _hasRealConnection(results));
     });
+    // Task 9 -- Risk Register row 3, best-effort only. Checked once per
+    // screen lifetime (a filesystem layout doesn't change mid-session);
+    // see RootDetectionService's own doc for exactly what this catches.
+    _isLikelyCompromised = _rootDetectionService.isLikelyCompromised();
   }
 
   bool _hasRealConnection(List<ConnectivityResult> results) =>
@@ -72,7 +82,19 @@ class _RosterScreenState extends State<RosterScreen> {
     _refreshRoster();
   }
 
+  // Task 9 -- Risk Register row 2, "lockout after repeated failed attempts,
+  // tracked per profile so one person's lockout doesn't affect another's."
+  // Checked *before* even showing the PIN dialog: a locked-out profile
+  // shouldn't get a chance to burn CPU on Argon2id (PinService.unwrap) or
+  // learn anything from further attempts while locked.
   Future<void> _selectProfile(RosterEntry entry) async {
+    final lockedUntil = await _pinLockoutService.lockedUntil(entry.userId);
+    if (!mounted) return;
+    if (lockedUntil != null) {
+      _showLockoutMessage(entry.displayName, lockedUntil);
+      return;
+    }
+
     final pin = await showDialog<String>(
       context: context,
       builder: (context) => _PinPromptDialog(displayName: entry.displayName),
@@ -82,11 +104,16 @@ class _RosterScreenState extends State<RosterScreen> {
     try {
       final token = await _localUnlockService.unlock(userId: entry.userId, pin: pin);
       if (token == null) {
-        if (mounted) {
+        final newLockout = await _pinLockoutService.recordFailure(entry.userId);
+        if (!mounted) return;
+        if (newLockout != null) {
+          _showLockoutMessage(entry.displayName, newLockout);
+        } else {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wrong PIN — rejected.')));
         }
         return;
       }
+      await _pinLockoutService.reset(entry.userId);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ProfileHomeScreen(entry: entry, recoveredToken: token)),
@@ -96,6 +123,17 @@ class _RosterScreenState extends State<RosterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Unlock failed: $e')));
       }
     }
+  }
+
+  void _showLockoutMessage(String displayName, DateTime until) {
+    final secondsLeft = until.difference(DateTime.now()).inSeconds.clamp(0, 999);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: const Key('lockoutMessage'),
+        content: Text('$displayName is locked out after too many wrong PINs — try again in ${secondsLeft}s.'),
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   @override
@@ -109,6 +147,19 @@ class _RosterScreenState extends State<RosterScreen> {
           final roster = snapshot.data!;
           return Column(
             children: [
+              if (_isLikelyCompromised)
+                Container(
+                  key: const Key('rootWarningBanner'),
+                  width: double.infinity,
+                  color: Colors.orange.shade100,
+                  padding: const EdgeInsets.all(12),
+                  child: const Text(
+                    'This device shows signs of being rooted/modified. Roster Vault still works — '
+                    '"unmanaged" is the design brief — but treat local security guarantees here with '
+                    'reduced confidence.',
+                    style: TextStyle(color: Colors.black87, fontSize: 12),
+                  ),
+                ),
               Expanded(
                 child: roster.isEmpty
                     ? const Center(
@@ -208,6 +259,18 @@ class _PinPromptDialogState extends State<_PinPromptDialog> {
 /// else to do: nothing async, no network call, no re-derivation, because
 /// this profile's data was never left "open" anywhere beyond this screen's
 /// own local variables.
+/// Thrown by [_ProfileHomeScreenState._verify] when
+/// [ClockIntegrityService.isClockRolledBack] reports the device clock reads
+/// earlier than a timestamp this device has already genuinely seen from the
+/// real server -- Risk Register row 1. Deliberately its own type, not a
+/// generic [StateError], so the UI can show the specific, named reason
+/// rather than a generic "sign-in check failed."
+class ClockRolledBackError implements Exception {
+  @override
+  String toString() =>
+      'This device\'s clock appears to have been moved backward. Sign-in is blocked until the clock is corrected.';
+}
+
 class ProfileHomeScreen extends StatefulWidget {
   const ProfileHomeScreen({super.key, required this.entry, required this.recoveredToken});
 
@@ -223,6 +286,7 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
   final _userIdentityService = UserIdentityService();
   final _enrollmentService = EnrollmentService();
   final _offlineVerifier = const OfflineVerifier();
+  final _clockIntegrityService = ClockIntegrityService();
   late final Future<OfflineVerificationResult> _verifyFuture;
 
   bool _isRefreshing = false;
@@ -235,11 +299,19 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
     _verifyFuture = _verify();
   }
 
+  /// Task 9 -- Risk Register row 1, checked *before* running the normal
+  /// Task 5 verification at all: a rolled-back clock is refused with its
+  /// own specific, named reason ([ClockRolledBackError]) rather than being
+  /// allowed to fall through into (and possibly incorrectly pass) the
+  /// ordinary expiry check, which trusts the device clock completely.
   Future<OfflineVerificationResult> _verify() async {
+    if (await _clockIntegrityService.isClockRolledBack()) {
+      throw ClockRolledBackError();
+    }
     final identity = await _deviceIdentityService.ensureDeviceIdentity();
     final knownEpoch = await _enrollmentService.knownEpoch(widget.entry.userId) ?? 0;
     final userPubKey = await _userIdentityService.ensureUserKeyPair(widget.entry.userId);
-    return _offlineVerifier.verify(
+    final result = await _offlineVerifier.verify(
       token: widget.recoveredToken,
       issuerPublicKeyPem: issuerPublicKeyPem,
       expectedDeviceId: identity.deviceId,
@@ -247,6 +319,14 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
       userPublicKeyPem: userPubKey,
       signChallenge: (nonce) => _userIdentityService.signChallenge(widget.entry.userId, nonce),
     );
+    // Only a signature-verified token's own `iat` claim ever raises the
+    // high-water mark -- never the device's own current clock, which is
+    // exactly what this mechanism doesn't trust. See ClockIntegrityService.
+    if (result.isValid) {
+      final iat = result.claims['iat'];
+      if (iat is int) await _clockIntegrityService.recordObservedServerTime(iat);
+    }
+    return result;
   }
 
   /// Task 8 — "silent refresh on app foreground when online," scoped
@@ -323,6 +403,13 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
           future: _verifyFuture,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
+              if (snapshot.error is ClockRolledBackError) {
+                return Text(
+                  '${snapshot.error}',
+                  key: const Key('clockRolledBackMessage'),
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                );
+              }
               return Text('Sign-in check failed: ${snapshot.error}', style: const TextStyle(color: Colors.red));
             }
             if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
