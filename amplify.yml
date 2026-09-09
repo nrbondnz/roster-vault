@@ -22,7 +22,7 @@ frontend:
     build:
       commands:
         - mkdir -p ./dist
-        - echo "Roster Vault: this Amplify app deploys the backend only. There is no web frontend here." > ./dist/index.html
+        - echo "Roster Vault backend-only deploy. There is no web frontend hosted here." > ./dist/index.html
   artifacts:
     baseDirectory: dist
     files:
