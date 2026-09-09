@@ -38,7 +38,7 @@ dependencies:
   # Backed by Android Keystore / iOS Keychain. Used to persist the deviceId
   # string (Trust Anchor 2) — see docs/roster-vault/Security/Trust Anchors.md
   # and Task 3 of docs/roster-vault/stories/story-checkpoint-mvp.md.
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^11.0.0
 
   # Generates and uses the hardware-backed device keypair (Trust Anchor 2)
   # and, later, the per-user keypairs (Trust Anchor 3, Task 6) via Android
@@ -58,23 +58,24 @@ dependencies:
 
   # Cognito login (Task 4b) — the one moment the app behaves like any other
   # app, per docs/roster-vault/Architecture/Enrollment Flow.md step 1.
-  amplify_flutter: ^2.11.0
-  amplify_auth_cognito: ^2.11.0
+  amplify_flutter: ^2.15.0
+  amplify_auth_cognito: ^2.15.0
   cryptography: ^2.9.0
   http: ^1.6.0
   dart_jsonwebtoken: ^3.4.1
-  drift: ^2.31.0
-  sqlite3: ^2.9.4
+  # sqlcipher_flutter_libs was tried first (Task 6) and reverted -- its
+  # Windows CMake build needs OpenSSL dev headers not installed on this
+  # machine. Its own pub.dev listing is now EOL, pointing at the real fix:
+  # package:sqlite3 3.x bundles SQLCipher natively via Dart's native-asset
+  # build hooks (no separate plugin/native headers needed) -- see
+  # https://pub.dev/packages/sqlcipher_flutter_libs and sqlite3.dart's
+  # CHANGELOG.md ("You should drop your dependencies on sqlite3_flutter_libs
+  # and sqlcipher_flutter_libs when upgrading"). drift 2.34+ is the first
+  # version compatible with sqlite3 3.x.
+  drift: ^2.34.0
+  sqlite3: ^3.4.0
   local_auth: ^3.0.2
-  # sqlcipher_flutter_libs was tried and reverted (Task 6) -- its Windows
-  # CMake build requires OpenSSL dev headers (`find_package(OpenSSL)`),
-  # which aren't installed on this machine, and installing system-wide dev
-  # tools is outside this project's authorized scope (this repo and its
-  # own Amplify backend only). Without it, PRAGMA key on package:sqlite3 is
-  # a silent no-op -- confirmed directly (PRAGMA cipher_version returned no
-  # rows; a written "encrypted" file's first bytes were the plaintext
-  # "SQLite format 3" header). See story checkpoint Task 6 for the full
-  # finding and what unblocking this needs.
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -86,8 +87,22 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  drift_dev: ^2.31.0
+  drift_dev: ^2.34.0
   build_runner: ^2.15.1
+
+# Selects SQLite3MultipleCiphers as package:sqlite3's native binary (Task 6,
+# real per-user encrypted storage) instead of the plain-SQLite default.
+# Deliberately "sqlite3mc", not "sqlcipher" -- the sqlite3.dart hook docs
+# state the sqlcipher build "links OpenSSL on Windows, Linux and Android",
+# the exact dependency this project doesn't have installed. sqlite3mc is a
+# separate, self-contained cipher implementation with no OpenSSL dependency,
+# downloaded as a precompiled binary per platform. See
+# https://github.com/simolus3/sqlite3.dart/blob/main/sqlite3/doc/hook.md and
+# the story checkpoint's Task 6 entry.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

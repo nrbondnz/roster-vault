@@ -11,36 +11,30 @@ class WrongPartitionKeyException implements Exception {
   String toString() => 'WrongPartitionKeyException: key does not match the existing partition at $dbPath';
 }
 
-/// Task 6 — intended to implement "Real Partitioning, Not Just a UI
-/// Filter" (docs/roster-vault/Architecture/Multi-User Partitioning.md):
-/// each enrolled person's local data in its own SQLCipher-encrypted SQLite
-/// file, keyed by that person's `K_user` ([PartitionKeyService]'s output).
+/// Task 6 — implements "Real Partitioning, Not Just a UI Filter"
+/// (docs/roster-vault/Architecture/Multi-User Partitioning.md): each
+/// enrolled person's local data in its own encrypted SQLite file, keyed by
+/// that person's `K_user` ([PartitionKeyService]'s output).
 ///
-/// **Encryption is NOT currently active on this dev machine -- confirmed,
-/// not assumed.** `PRAGMA key` is only meaningful if the loaded native
-/// `sqlite3` library actually has cipher support compiled in
-/// (`sqlcipher_flutter_libs`, which patches which native library Flutter's
-/// Windows build links against). That package's Windows CMake build
-/// requires OpenSSL dev headers, which aren't installed here, and
-/// installing system-wide dev tools is outside this project's authorized
-/// scope. Verified directly: with the dependency reverted, `PRAGMA
-/// cipher_version` returns no rows (no cipher support at all), and a file
-/// written through this class starts with the plaintext `"SQLite format
-/// 3\0"` header -- i.e. genuinely unencrypted, not merely unverified.
-///
-/// What *is* real: the wrong-key detection control flow below (the
-/// `alreadyExists` check and the "read real data, not just open the file"
-/// verification) is correct logic, exercised by real tests -- it was
-/// actually what caught the missing encryption in the first place, when a
-/// "wrong key" open unexpectedly succeeded. Once `sqlcipher_flutter_libs`
-/// (or a working replacement) is actually linked, this same code path
-/// should correctly reject wrong keys; that specific claim just can't be
-/// backed by real ciphertext on this machine yet. See the story
-/// checkpoint's Task 6 entry for what unblocking this needs.
+/// **Encryption is confirmed active — verified directly, not assumed.**
+/// `sqlcipher_flutter_libs` (the obvious first choice) is now EOL upstream;
+/// its own pub.dev listing points at `package:sqlite3` 3.x instead, which
+/// bundles cipher support natively via Dart's native-asset build hooks.
+/// `pubspec.yaml`'s `hooks.user_defines.sqlite3.source: sqlite3mc` selects
+/// SQLite3MultipleCiphers specifically — deliberately not `sqlcipher`,
+/// since sqlite3.dart's own docs state the sqlcipher build "links OpenSSL
+/// on Windows, Linux and Android" (the exact dependency this project
+/// doesn't have installed), while sqlite3mc is self-contained. Verified on
+/// Windows: a file written through this class is neither the plaintext
+/// `"SQLite format 3\0"` header nor does it contain the plaintext value
+/// anywhere in its raw bytes; a wrong key fails to read it; the right key
+/// still can. See docs/roster-vault/Troubleshooting/Known Issues.md and
+/// the story checkpoint's Task 6 entry for the full history, including the
+/// dead-end first attempt.
 ///
 /// Uses `package:sqlite3` directly rather than `drift`'s query builder --
-/// unrelated to the encryption gap above, just a scoping choice to keep
-/// this class focused on the key-management mechanism, not an ORM layer.
+/// a scoping choice to keep this class focused on the key-management
+/// mechanism, not an ORM layer.
 class EncryptedPartitionStore {
   const EncryptedPartitionStore();
 
@@ -71,7 +65,7 @@ class EncryptedPartitionStore {
       try {
         db.select('SELECT count(*) FROM partition_data;');
       } on SqliteException {
-        db.dispose();
+        db.close();
         throw WrongPartitionKeyException(dbPath);
       }
     } else {

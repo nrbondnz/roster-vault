@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:amplify_auth_cognito/amplify_auth_cognito.dart';
 import 'package:amplify_flutter/amplify_flutter.dart';
@@ -8,8 +9,10 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import 'screens/login_screen.dart';
 import 'services/device_identity_service.dart';
+import 'services/encrypted_partition_store.dart';
 import 'services/enrollment_service.dart';
 import 'services/issuer_public_key.dart';
+import 'services/local_unlock_service.dart';
 import 'services/offline_verifier.dart';
 import 'services/token_verifier.dart';
 import 'services/user_identity_service.dart';
@@ -91,6 +94,15 @@ class _AuthGateState extends State<_AuthGate> {
     });
   }
 
+  /// Task 6 — needed to actually switch between two enrolled profiles on
+  /// this device for the cross-profile isolation demonstration (not part
+  /// of Task 7's real roster/fast-switch UI, which replaces this whole
+  /// debug screen -- just enough to prove the isolation claim now).
+  Future<void> _onSignedOut() async {
+    await Amplify.Auth.signOut();
+    setState(() => _status = _AuthGateStatus.signedOut);
+  }
+
   @override
   Widget build(BuildContext context) {
     switch (_status) {
@@ -108,7 +120,11 @@ class _AuthGateState extends State<_AuthGate> {
       case _AuthGateStatus.signedOut:
         return LoginScreen(onSignedIn: _onSignedIn);
       case _AuthGateStatus.signedIn:
-        return DeviceDebugScreen(deviceIdentityService: DeviceIdentityService(), signedInUser: _user);
+        return DeviceDebugScreen(
+          deviceIdentityService: DeviceIdentityService(),
+          signedInUser: _user,
+          onSignedOut: _onSignedOut,
+        );
     }
   }
 }
@@ -118,7 +134,7 @@ class _AuthGateState extends State<_AuthGate> {
 /// Never shown in a release build's normal flow — the real entry point is
 /// the roster screen (Task 7).
 class DeviceDebugScreen extends StatefulWidget {
-  const DeviceDebugScreen({super.key, required this.deviceIdentityService, this.signedInUser});
+  const DeviceDebugScreen({super.key, required this.deviceIdentityService, this.signedInUser, this.onSignedOut});
 
   final DeviceIdentityService deviceIdentityService;
 
@@ -126,6 +142,11 @@ class DeviceDebugScreen extends StatefulWidget {
   /// so the on-screen authenticated state is actually visible, not just
   /// inferred from the fact that this screen is showing at all.
   final AuthUser? signedInUser;
+
+  /// Task 6 — lets a second person sign in on the same device, to
+  /// demonstrate cross-profile isolation for real rather than with only
+  /// one profile ever enrolled.
+  final Future<void> Function()? onSignedOut;
 
   @override
   State<DeviceDebugScreen> createState() => _DeviceDebugScreenState();
@@ -147,6 +168,16 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   String? _offlineSignInError;
   OfflineVerificationResult? _offlineSignInResult;
 
+  bool _isTestingStorage = false;
+  String? _storageTestResult;
+
+  final _localUnlockService = LocalUnlockService();
+  final _pinController = TextEditingController();
+  bool _isUnlocking = false;
+  String? _unlockResult;
+  String? _unlockError;
+  late Future<bool> _pinIsSetUp;
+
   @override
   void initState() {
     super.initState();
@@ -158,6 +189,15 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
         'machine — this platform is a dev convenience, not the deployment target (Android/iOS).',
       ),
     );
+    _pinIsSetUp = widget.signedInUser == null
+        ? Future.value(false)
+        : _localUnlockService.isSetUp(widget.signedInUser!.userId);
+  }
+
+  @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
   }
 
   /// Task 4c — generate this person's per-device keypair, call the `enroll`
@@ -240,6 +280,117 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
     }
   }
 
+  /// Task 6 — proves real encryption is active on *this* device, the same
+  /// way Task 5's airplane-mode test proved offline verification: not by
+  /// inspecting code, by observing it. Writes real data through
+  /// [EncryptedPartitionStore] with one key, confirms the raw file bytes on
+  /// disk are neither the plaintext SQLite header nor the plaintext value,
+  /// confirms a wrong key fails to read it, then confirms the right key
+  /// still can. See docs/roster-vault/Troubleshooting/Known Issues.md and
+  /// the story checkpoint's Task 6 entry for why this was ever in doubt.
+  Future<void> _testEncryptedStorage() async {
+    setState(() {
+      _isTestingStorage = true;
+      _storageTestResult = null;
+    });
+    const store = EncryptedPartitionStore();
+    final dir = await Directory.systemTemp.createTemp('roster_vault_storage_test_');
+    final path = '${dir.path}/test.db';
+    const rightKey = [
+      0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55,
+      0x66, 0x77, 0x88, 0x99, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0x00, 0x11,
+    ];
+    const wrongKey = [
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+      0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    ];
+    const secret = 'this is secret plaintext data';
+    try {
+      final db1 = store.open(dbPath: path, partitionKey: rightKey);
+      db1.execute("CREATE TABLE IF NOT EXISTS t (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
+      db1.execute("INSERT INTO t VALUES ('hello', '$secret')");
+      db1.close();
+
+      final bytes = await File(path).readAsBytes();
+      final headerIsPlaintext = String.fromCharCodes(bytes.take(16)).startsWith('SQLite format 3');
+      final containsSecret = String.fromCharCodes(bytes).contains(secret);
+
+      var wrongKeyRejected = false;
+      try {
+        store.open(dbPath: path, partitionKey: wrongKey);
+      } on WrongPartitionKeyException {
+        wrongKeyRejected = true;
+      }
+
+      final db2 = store.open(dbPath: path, partitionKey: rightKey);
+      final rows = db2.select("SELECT v FROM t WHERE k = 'hello'");
+      db2.close();
+      final rightKeyWorked = rows.isNotEmpty && rows.first['v'] == secret;
+
+      final pass = !headerIsPlaintext && !containsSecret && wrongKeyRejected && rightKeyWorked;
+      setState(() {
+        _storageTestResult = pass
+            ? 'PASS — file header not plaintext, secret not found in raw bytes, wrong key rejected, right key read the real value back'
+            : 'FAIL — headerIsPlaintext=$headerIsPlaintext containsSecret=$containsSecret '
+                'wrongKeyRejected=$wrongKeyRejected rightKeyWorked=$rightKeyWorked';
+      });
+    } catch (e) {
+      setState(() => _storageTestResult = 'FAIL — $e');
+    } finally {
+      await dir.delete(recursive: true);
+      if (mounted) setState(() => _isTestingStorage = false);
+    }
+  }
+
+  /// Task 6 — the fourth on-screen milestone: a real PIN gates access to
+  /// this person's own data, on this device, for real. If [userId] has no
+  /// partition yet, sets one up (PIN-wraps their already-enrolled token,
+  /// see [LocalUnlockService]'s class doc for why the PIN wraps the token
+  /// rather than being mixed into the database key itself). If a partition
+  /// already exists, attempts to unlock it with the entered PIN -- shown on
+  /// screen as PASS (with the recovered token, proving it's the real one,
+  /// not just "a decrypt didn't throw") or a clear wrong-PIN rejection.
+  Future<void> _setUpOrUnlockPin(String userId) async {
+    final pin = _pinController.text;
+    if (pin.isEmpty) {
+      setState(() => _unlockError = 'Enter a PIN first.');
+      return;
+    }
+    setState(() {
+      _isUnlocking = true;
+      _unlockError = null;
+      _unlockResult = null;
+    });
+    try {
+      final alreadySetUp = await _localUnlockService.isSetUp(userId);
+      if (!alreadySetUp) {
+        final token = await _enrollmentService.storedToken(userId);
+        if (token == null) {
+          setState(() => _unlockError = 'No enrolled token found for this user yet — enroll first.');
+          return;
+        }
+        await _localUnlockService.setUpPin(userId: userId, pin: pin, enrollmentToken: token);
+        setState(() {
+          _unlockResult = 'PIN set up for this profile on this device.';
+          _pinIsSetUp = Future.value(true);
+        });
+      } else {
+        final unwrapped = await _localUnlockService.unlock(userId: userId, pin: pin);
+        setState(() {
+          _unlockResult = unwrapped == null
+              ? null
+              : 'PASS — unlocked with the correct PIN, recovered token: '
+                  '${unwrapped.substring(0, unwrapped.length.clamp(0, 24))}…';
+          _unlockError = unwrapped == null ? 'Wrong PIN — rejected.' : null;
+        });
+      }
+    } catch (e) {
+      setState(() => _unlockError = 'Local unlock failed: $e');
+    } finally {
+      if (mounted) setState(() => _isUnlocking = false);
+    }
+  }
+
   /// [UserIdentityService.signChallenge] resolves the DER-vs-P1363 question
   /// this used to be blocked on -- confirmed against real Android hardware
   /// 2026-09-10, see docs/roster-vault/Troubleshooting/Known Issues.md and
@@ -293,6 +444,105 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
     );
   }
 
+  Widget _buildStorageTestSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text('Encrypted Storage (Task 6)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text(
+          'Proves real encryption is active on this device -- writes through '
+          'EncryptedPartitionStore, checks the raw file bytes, confirms a wrong key is rejected.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            key: const Key('storageTestButton'),
+            onPressed: _isTestingStorage ? null : _testEncryptedStorage,
+            child: _isTestingStorage
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Test encrypted storage'),
+          ),
+        ),
+        if (_storageTestResult != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            _storageTestResult!,
+            key: const Key('storageTestResult'),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: _storageTestResult!.startsWith('PASS') ? Colors.green : Colors.red,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildLocalUnlockSection() {
+    final user = widget.signedInUser;
+    if (user == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text('Local Unlock (Task 6)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text(
+          'A real PIN gates this profile\'s data on this device. First use sets it up '
+          '(PIN-wraps the already-enrolled token); after that, the same button attempts to unlock.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 16),
+        FutureBuilder<bool>(
+          future: _pinIsSetUp,
+          builder: (context, snapshot) {
+            final isSetUp = snapshot.data ?? false;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  key: const Key('pinField'),
+                  controller: _pinController,
+                  decoration: InputDecoration(labelText: isSetUp ? 'Enter PIN to unlock' : 'Choose a PIN'),
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  enabled: !_isUnlocking,
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: const Key('pinSubmitButton'),
+                    onPressed: _isUnlocking ? null : () => _setUpOrUnlockPin(user.userId),
+                    child: _isUnlocking
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Text(isSetUp ? 'Unlock' : 'Set PIN'),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        if (_unlockError != null) ...[
+          const SizedBox(height: 12),
+          Text(_unlockError!, key: const Key('pinError'), style: const TextStyle(color: Colors.red)),
+        ],
+        if (_unlockResult != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _unlockResult!,
+            key: const Key('pinResult'),
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildEnrollmentSection(DeviceIdentity identity) {
     if (widget.signedInUser == null) return const SizedBox.shrink();
     return Column(
@@ -340,7 +590,17 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Roster Vault — Device Debug')),
+      appBar: AppBar(
+        title: const Text('Roster Vault — Device Debug'),
+        actions: [
+          if (widget.onSignedOut != null)
+            TextButton(
+              key: const Key('signOutButton'),
+              onPressed: widget.onSignedOut,
+              child: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: FutureBuilder<DeviceIdentity>(
@@ -375,6 +635,8 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
                   SelectableText(identity.publicKeyPem, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
                   _buildEnrollmentSection(identity),
                   _buildOfflineSignInSection(identity),
+                  _buildStorageTestSection(),
+                  _buildLocalUnlockSection(),
                 ],
               ],
             );

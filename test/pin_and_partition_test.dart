@@ -55,13 +55,13 @@ void main() {
     });
   });
 
-  // NOTE: these tests run against a plain, unencrypted sqlite3 build --
-  // see EncryptedPartitionStore's doc comment for why real SQLCipher
-  // encryption isn't active on this machine (missing OpenSSL for the
-  // Windows build). They still exercise the real wrong-key detection
-  // control flow (and did catch a real bug in it, see the story
-  // checkpoint), but do NOT prove any data is actually encrypted at rest.
-  group('EncryptedPartitionStore -- key-management logic (NOT proof of real encryption, see class doc)', () {
+  // Real encryption is active here (Task 6, resolved 2026-09-10): sqlite3
+  // 3.x + the sqlite3mc build selected via pubspec.yaml's `hooks.user_defines`
+  // (self-contained, no OpenSSL dependency, unlike sqlcipher_flutter_libs'
+  // Windows build) -- see EncryptedPartitionStore's doc comment and the
+  // story checkpoint's Task 6 entry for the full story of how this was
+  // found and verified, not just configured.
+  group('EncryptedPartitionStore -- real encryption verified', () {
     const store = EncryptedPartitionStore();
     late Directory tempDir;
 
@@ -74,30 +74,23 @@ void main() {
 
       final db1 = store.open(dbPath: path, partitionKey: key);
       db1.execute("INSERT INTO partition_data (key, value) VALUES ('name', 'Alice')");
-      db1.dispose();
+      db1.close();
 
       final db2 = store.open(dbPath: path, partitionKey: key);
       final rows = db2.select("SELECT value FROM partition_data WHERE key = 'name'");
-      db2.dispose();
+      db2.close();
 
       expect(rows.single['value'], 'Alice');
     });
 
-    test(
-      'the same file cannot be opened with a different user\'s key',
-      skip: 'Requires real cipher support, not active on this machine -- '
-          'see EncryptedPartitionStore\'s doc comment and the Task 6 story checkpoint entry. '
-          'With no real encryption applied, any "key" reads the same plaintext data, so this '
-          'assertion cannot pass or meaningfully fail here -- it needs re-enabling the moment '
-          'sqlcipher_flutter_libs (or a working replacement) actually links.',
-      () {
+    test('the same file cannot be opened with a different user\'s key', () {
       final correctKey = List<int>.filled(32, 1);
       final wrongKey = List<int>.filled(32, 2);
       final path = '${tempDir.path}/user_b.db';
 
       final db1 = store.open(dbPath: path, partitionKey: correctKey);
       db1.execute("INSERT INTO partition_data (key, value) VALUES ('secret', 'only-user-b-should-read-this')");
-      db1.dispose();
+      db1.close();
 
       expect(
         () => store.open(dbPath: path, partitionKey: wrongKey),
@@ -112,11 +105,11 @@ void main() {
 
       final dbA = store.open(dbPath: '${tempDir.path}/user_a2.db', partitionKey: keyA);
       dbA.execute("INSERT INTO partition_data (key, value) VALUES ('name', 'Alice')");
-      dbA.dispose();
+      dbA.close();
 
       final dbB = store.open(dbPath: '${tempDir.path}/user_b2.db', partitionKey: keyB);
       final rowsInB = dbB.select('SELECT * FROM partition_data');
-      dbB.dispose();
+      dbB.close();
 
       expect(rowsInB, isEmpty, reason: "user B's fresh partition must not see user A's data");
     });

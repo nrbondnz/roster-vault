@@ -6,7 +6,11 @@ plugins {
 
 android {
     namespace = "com.rostervault.roster_vault"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_secure_storage 11.0.0 requires compileSdk 37 -- Flutter's own
+    // flutter.compileSdkVersion default (36) is behind that as of this SDK
+    // release, so it's overridden explicitly rather than left to drift out
+    // of sync with a dependency's real requirement.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
