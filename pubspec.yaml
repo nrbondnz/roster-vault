@@ -44,6 +44,16 @@ dependencies:
   # and, later, the per-user keypairs (Trust Anchor 3, Task 6) via Android
   # Keystore/StrongBox and iOS Secure Enclave. Private key material never
   # leaves the plugin's native layer.
+  #
+  # KNOWN ISSUE on real Android hardware (API 36): createKeys() fails with
+  # BiometricError.unknown "Foreground activity required" even though the
+  # app is confirmed fully foregrounded and drawn (root-caused via the
+  # plugin's own source + logcat) -- see
+  # docs/roster-vault/Troubleshooting/Known Issues.md. Tried pinning to a
+  # commit past 13.0.0 with an AGP9/KGP Gradle-DSL fix; rebuilt and
+  # confirmed on-device that it does NOT resolve this (different bug near
+  # the same code, not the same one) -- reverted back to the hosted version
+  # rather than carry that risk for no benefit.
   biometric_signature: ^13.0.0
 
   # Cognito login (Task 4b) — the one moment the app behaves like any other

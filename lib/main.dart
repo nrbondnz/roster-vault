@@ -240,26 +240,12 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
     }
   }
 
-  /// Not yet verifiable on real hardware in this environment (same
-  /// Windows-Hello-PIN gap as Task 4c's user-key generation), so this is
-  /// deliberately left unimplemented rather than shipping an unverified
-  /// guess: `biometric_signature`'s `createSignature(signatureFormat:
-  /// SignatureFormat.raw)` returns "raw signature bytes" without
-  /// documenting whether that means DER-encoded or the fixed-width IEEE
-  /// P1363 (`r‖s`) format Task 4a's Lambda had to specifically convert
-  /// KMS's DER output *into* for JWS compatibility. Guessing wrong here
-  /// would silently produce a challenge-response that always fails on
-  /// real hardware -- worse than a clearly-flagged gap. See the story
-  /// checkpoint's Task 5 entry.
+  /// [UserIdentityService.signChallenge] resolves the DER-vs-P1363 question
+  /// this used to be blocked on -- confirmed against real Android hardware
+  /// 2026-09-10, see docs/roster-vault/Troubleshooting/Known Issues.md and
+  /// the story checkpoint's Task 5 entry.
   ChallengeSigner _productionChallengeSigner(String userId) {
-    return (nonce) async {
-      throw UnimplementedError(
-        'Real biometric challenge-response signing is not wired up yet -- see '
-        '_productionChallengeSigner\'s doc comment for exactly why, and OfflineVerifier\'s '
-        'test suite (test/offline_verifier_test.dart) for the verification logic proven correct '
-        'against real ECDSA signatures with a substitute keypair.',
-      );
-    };
+    return (nonce) => _userIdentityService.signChallenge(userId, nonce);
   }
 
   Widget _buildOfflineSignInSection(DeviceIdentity identity) {
@@ -355,7 +341,7 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Roster Vault — Device Debug')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: FutureBuilder<DeviceIdentity>(
           future: _deviceIdentity,
