@@ -1,0 +1,35 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+.idea/
+
+# Amplify Gen 2
+amplify/.amplify/
+amplify_outputs.json
+lib/amplify_outputs.dart
+node_modules/
+
+# Never commit key material generated during local dev/testing
+*.pem
+*.key
+*.jks
+key.properties
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Obsidian local workspace state (not shared config)
+docs/roster-vault/.obsidian/workspace*.json
+
+
+# amplify
+node_modules
+.amplify
+amplify_outputs*
+amplifyconfiguration*
