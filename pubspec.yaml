@@ -76,6 +76,7 @@ dependencies:
   sqlite3: ^3.4.0
   local_auth: ^3.0.2
   path_provider: ^2.1.5
+  connectivity_plus: ^7.3.1
 
 dev_dependencies:
   flutter_test:

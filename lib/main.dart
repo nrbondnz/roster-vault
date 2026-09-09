@@ -8,12 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'screens/login_screen.dart';
+import 'screens/roster_screen.dart';
 import 'services/device_identity_service.dart';
 import 'services/encrypted_partition_store.dart';
 import 'services/enrollment_service.dart';
 import 'services/issuer_public_key.dart';
 import 'services/local_unlock_service.dart';
 import 'services/offline_verifier.dart';
+import 'services/roster_registry_service.dart';
 import 'services/token_verifier.dart';
 import 'services/user_identity_service.dart';
 
@@ -30,7 +32,7 @@ class RosterVaultApp extends StatelessWidget {
     return MaterialApp(
       title: 'Roster Vault',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
-      home: const _AuthGate(),
+      home: const RosterScreen(),
     );
   }
 }
@@ -41,16 +43,22 @@ class RosterVaultApp extends StatelessWidget {
 /// whole system (docs/roster-vault/Architecture/Enrollment Flow.md step 1)
 /// happens in [LoginScreen]; everything downstream of a successful sign-in
 /// is what Task 4c (enrollment) and beyond build on.
-class _AuthGate extends StatefulWidget {
-  const _AuthGate();
+///
+/// Task 7 — public (was private) so [RosterScreen]'s "Add a person" flow
+/// can push it as a sub-route: real enrollment is still gated by a real
+/// Cognito sign-in, this just makes the same already-proven flow reachable
+/// from the roster instead of being the app's forced entry point. The
+/// actual app-open experience is [RosterScreen] now, not this.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
 
   @override
-  State<_AuthGate> createState() => _AuthGateState();
+  State<AuthGate> createState() => _AuthGateState();
 }
 
 enum _AuthGateStatus { loading, signedOut, signedIn, error }
 
-class _AuthGateState extends State<_AuthGate> {
+class _AuthGateState extends State<AuthGate> {
   _AuthGateStatus _status = _AuthGateStatus.loading;
   AuthUser? _user;
   String? _errorText;
@@ -172,6 +180,7 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   String? _storageTestResult;
 
   final _localUnlockService = LocalUnlockService();
+  final _rosterRegistryService = RosterRegistryService();
   final _pinController = TextEditingController();
   bool _isUnlocking = false;
   String? _unlockResult;
@@ -342,6 +351,27 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
     }
   }
 
+  /// Task 7 — the roster needs a human-readable label, captured now while
+  /// still signed in (Cognito's `username` for this pool is the opaque
+  /// sub, not anything a person would recognize as their own name -- see
+  /// RosterRegistryService's class doc). Falls back to the raw userId
+  /// rather than failing the caller's own already-succeeded step over a
+  /// display-name fetch hiccup.
+  Future<void> _registerOnRoster(String userId) async {
+    String displayName = userId;
+    try {
+      final attributes = await Amplify.Auth.fetchUserAttributes();
+      final email = attributes.firstWhere(
+        (a) => a.userAttributeKey == AuthUserAttributeKey.email,
+        orElse: () => const AuthUserAttribute(userAttributeKey: AuthUserAttributeKey.email, value: ''),
+      );
+      if (email.value.isNotEmpty) displayName = email.value;
+    } catch (_) {
+      // Fallback label used below.
+    }
+    await _rosterRegistryService.addOrUpdateProfile(userId: userId, displayName: displayName);
+  }
+
   /// Task 6 — the fourth on-screen milestone: a real PIN gates access to
   /// this person's own data, on this device, for real. If [userId] has no
   /// partition yet, sets one up (PIN-wraps their already-enrolled token,
@@ -370,12 +400,21 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
           return;
         }
         await _localUnlockService.setUpPin(userId: userId, pin: pin, enrollmentToken: token);
+        await _registerOnRoster(userId);
         setState(() {
           _unlockResult = 'PIN set up for this profile on this device.';
           _pinIsSetUp = Future.value(true);
         });
       } else {
         final unwrapped = await _localUnlockService.unlock(userId: userId, pin: pin);
+        // Task 7 -- also (re-)register on every successful unlock, not just
+        // first-time setup: a profile whose PIN was set up before the
+        // roster registry existed (or on a build from before this code
+        // shipped) would otherwise never appear on the roster despite
+        // genuinely working. Idempotent, so calling it here every time is
+        // cheap and keeps the registry self-healing rather than a second
+        // source of truth that can drift from what actually unlocks.
+        if (unwrapped != null) await _registerOnRoster(userId);
         setState(() {
           _unlockResult = unwrapped == null
               ? null
@@ -593,6 +632,16 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
       appBar: AppBar(
         title: const Text('Roster Vault — Device Debug'),
         actions: [
+          // Task 7 -- when this screen is reached from the roster's "Add a
+          // person" flow, this is how a real person actually gets back
+          // without re-entering the whole debug surface's Sign Out path
+          // (which would sign them out of the very profile just enrolled).
+          if (Navigator.of(context).canPop())
+            TextButton(
+              key: const Key('backToRosterButton'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done', style: TextStyle(color: Colors.white)),
+            ),
           if (widget.onSignedOut != null)
             TextButton(
               key: const Key('signOutButton'),
