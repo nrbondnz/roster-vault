@@ -4,9 +4,9 @@
 
 The Flutter project (`roster_vault`, package `com.rostervault.roster_vault`) now exists at the repo root — `flutter create` targeting Android, iOS, and Windows. `flutter analyze` and `flutter test` are clean.
 
-`lib/main.dart` currently shows a **device debug screen** — a development-only screen (never the real entry point once the roster screen lands in Task 7) that will display this device's `deviceId` and device public key once the device keypair generation work is confirmed and implemented. `flutter_secure_storage` is added to `pubspec.yaml` for that purpose, per [[../Security/Trust Anchors|Trust Anchors]].
+`lib/main.dart` shows a **device debug screen** — a development-only screen (never the real entry point once the roster screen lands in Task 7) displaying this device's `deviceId` and device public key. `lib/services/device_identity_service.dart` generates and persists both: the device keypair via the `biometric_signature` plugin (hardware-backed ECDSA P-256, Android Keystore/StrongBox or iOS Secure Enclave), the `deviceId` via `flutter_secure_storage`. See [[../Security/Trust Anchors|Trust Anchors]] for the implementation detail and a correctness note about avoiding accidental key rotation.
 
-**Not yet implemented:** actual device ECDSA P-256 keypair generation via platform Keystore/Keychain. This is cryptographic key-handling work — the debug screen is scaffolded, but generating and storing the real device keypair needs the specific plugin/approach confirmed before it's built (Flutter has no built-in hardware-backed asymmetric key generation; `flutter_secure_storage` alone only stores strings). See the open question logged in [[../stories/story-checkpoint-mvp|Story Checkpoint: MVP]].
+**Still outstanding:** running this on an actual Android/iOS target to confirm the key is generated once, persists across relaunches, and is genuinely P-256 — a Windows desktop run can't verify the last point, since the plugin falls back to RSA-2048 on Windows. See [[../stories/story-checkpoint-mvp|Story Checkpoint: MVP]] Task 3.
 
 Expected notes once more of the story lands:
 - Roster screen (Task 7)

@@ -6,12 +6,14 @@
 
 Command used: `npx ampx sandbox --once` (single deploy-and-exit, rather than the default watch mode, since this was run unattended).
 
-## Amplify Hosting / Git Connection (Task 1, pending)
+## Amplify Hosting / Git Connection (Task 1, in progress)
 
-Amplify's hosted backend build pipeline is a separate mechanism from the sandbox above — it builds from a connected git repository (GitHub/GitLab/Bitbucket/CodeCommit) on push, which is what lets a team (not just one developer's local credentials) get a backend build. This repository has no remote yet. See Task 1 in [[../stories/story-checkpoint-mvp|Story Checkpoint: MVP]] — inserted specifically because the original plan jumped straight to the sandbox and missed this.
+Amplify's hosted backend build pipeline is a separate mechanism from the sandbox above — it builds from a connected git repository (GitHub/GitLab/Bitbucket/CodeCommit) on push, which is what lets a team (not just one developer's local credentials) get a backend build. See Task 1 in [[../stories/story-checkpoint-mvp|Story Checkpoint: MVP]] — inserted specifically because the original plan jumped straight to the sandbox and missed this.
+
+- **Repo:** `https://github.com/nrbondnz/roster-vault` (private), `main` branch. Initial commit pushed 2026-09-09.
+- **Amplify Hosting app:** not yet created — Nigel is connecting the repo in the AWS Amplify Console himself.
 
 Expected notes once that lands:
-- GitHub repo URL and branch strategy
 - Amplify Hosting app ID
 - What triggers a build (push to `main`? PR previews?)
 
