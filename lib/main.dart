@@ -10,6 +10,7 @@ import 'screens/login_screen.dart';
 import 'services/device_identity_service.dart';
 import 'services/enrollment_service.dart';
 import 'services/issuer_public_key.dart';
+import 'services/offline_verifier.dart';
 import 'services/token_verifier.dart';
 import 'services/user_identity_service.dart';
 
@@ -141,6 +142,11 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   EnrollmentResult? _enrollmentResult;
   VerifiedTokenClaims? _verifiedClaims;
 
+  final _offlineVerifier = const OfflineVerifier();
+  bool _isSigningInOffline = false;
+  String? _offlineSignInError;
+  OfflineVerificationResult? _offlineSignInResult;
+
   @override
   void initState() {
     super.initState();
@@ -193,6 +199,112 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
     } finally {
       if (mounted) setState(() => _isEnrolling = false);
     }
+  }
+
+  /// Task 5 — the actual hard requirement. Runs [OfflineVerifier] against
+  /// whatever token is already stored on this device from Task 4c's
+  /// enrollment flow -- makes no network call of any kind (see
+  /// [OfflineVerifier]'s own doc comment on why that's true by
+  /// construction, not just by review). See the story checkpoint's Task 5
+  /// entry for exactly what this has and hasn't been demonstrated with on
+  /// this particular machine.
+  Future<void> _signInOffline(DeviceIdentity deviceIdentity) async {
+    final user = widget.signedInUser;
+    if (user == null) return;
+    setState(() {
+      _isSigningInOffline = true;
+      _offlineSignInError = null;
+      _offlineSignInResult = null;
+    });
+    try {
+      final storedToken = await _enrollmentService.storedToken(user.userId);
+      if (storedToken == null) {
+        setState(() => _offlineSignInError = 'No enrolled profile found on this device for this person yet — enroll first.');
+        return;
+      }
+      final knownEpoch = await _enrollmentService.knownEpoch(user.userId) ?? 0;
+
+      final result = await _offlineVerifier.verify(
+        token: storedToken,
+        issuerPublicKeyPem: issuerPublicKeyPem,
+        expectedDeviceId: deviceIdentity.deviceId,
+        currentKnownEpoch: knownEpoch,
+        userPublicKeyPem: await _userIdentityService.ensureUserKeyPair(user.userId).timeout(const Duration(seconds: 15)),
+        signChallenge: _productionChallengeSigner(user.userId),
+      );
+      setState(() => _offlineSignInResult = result);
+    } catch (e) {
+      setState(() => _offlineSignInError = 'Offline sign-in check failed: $e');
+    } finally {
+      if (mounted) setState(() => _isSigningInOffline = false);
+    }
+  }
+
+  /// Not yet verifiable on real hardware in this environment (same
+  /// Windows-Hello-PIN gap as Task 4c's user-key generation), so this is
+  /// deliberately left unimplemented rather than shipping an unverified
+  /// guess: `biometric_signature`'s `createSignature(signatureFormat:
+  /// SignatureFormat.raw)` returns "raw signature bytes" without
+  /// documenting whether that means DER-encoded or the fixed-width IEEE
+  /// P1363 (`r‖s`) format Task 4a's Lambda had to specifically convert
+  /// KMS's DER output *into* for JWS compatibility. Guessing wrong here
+  /// would silently produce a challenge-response that always fails on
+  /// real hardware -- worse than a clearly-flagged gap. See the story
+  /// checkpoint's Task 5 entry.
+  ChallengeSigner _productionChallengeSigner(String userId) {
+    return (nonce) async {
+      throw UnimplementedError(
+        'Real biometric challenge-response signing is not wired up yet -- see '
+        '_productionChallengeSigner\'s doc comment for exactly why, and OfflineVerifier\'s '
+        'test suite (test/offline_verifier_test.dart) for the verification logic proven correct '
+        'against real ECDSA signatures with a substitute keypair.',
+      );
+    };
+  }
+
+  Widget _buildOfflineSignInSection(DeviceIdentity identity) {
+    if (widget.signedInUser == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text('Offline Sign-In', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text(
+          'Verifies the stored token locally -- signature, expiry, device-id, epoch, and a '
+          'challenge-response -- with no network call.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            key: const Key('offlineSignInButton'),
+            onPressed: _isSigningInOffline ? null : () => _signInOffline(identity),
+            child: _isSigningInOffline
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Sign in offline (verify stored token)'),
+          ),
+        ),
+        if (_offlineSignInError != null) ...[
+          const SizedBox(height: 12),
+          Text(_offlineSignInError!, key: const Key('offlineSignInError'), style: const TextStyle(color: Colors.orange)),
+        ],
+        if (_offlineSignInResult != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            _offlineSignInResult!.isValid
+                ? 'Result: PASS'
+                : 'Result: FAIL (${_offlineSignInResult!.failure!.name})',
+            key: const Key('offlineSignInStatus'),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: _offlineSignInResult!.isValid ? Colors.green : Colors.red,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildEnrollmentSection(DeviceIdentity identity) {
@@ -276,6 +388,7 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
                   const Text('Device public key:'),
                   SelectableText(identity.publicKeyPem, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
                   _buildEnrollmentSection(identity),
+                  _buildOfflineSignInSection(identity),
                 ],
               ],
             );

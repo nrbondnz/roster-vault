@@ -28,6 +28,14 @@ class EnrollmentService {
 
   static String _tokenStorageKeyFor(String userId) => 'roster_vault_enrollment_token_$userId';
 
+  // Task 5 -- per docs/roster-vault/Security/Token Lifecycle and
+  // Revocation.md, offline epoch verification must compare the token's own
+  // epoch claim against "the epoch stored on-device from the last
+  // successful enrollment/refresh", explicitly NOT the token's own epoch
+  // (that would make the check a tautology -- it would always pass).
+  // Persisted separately here for exactly that reason.
+  static String _knownEpochStorageKeyFor(String userId) => 'roster_vault_known_epoch_$userId';
+
   Future<EnrollmentResult> enroll({
     required String deviceId,
     required String devicePubKey,
@@ -65,6 +73,11 @@ class EnrollmentService {
     // checkpoint): OS-level flutter_secure_storage encryption only. PIN-
     // derived wrapping is Task 6's scope, layered on top of this later.
     await _secureStorage.write(key: _tokenStorageKeyFor(userId), value: result.token);
+    // Every successful enroll/refresh call updates the on-device known
+    // epoch to whatever the server just returned -- this is the "last
+    // successful enrollment/refresh" value Task 5's offline epoch check
+    // compares against, not a live server read.
+    await _secureStorage.write(key: _knownEpochStorageKeyFor(userId), value: result.epoch.toString());
 
     return result;
   }
@@ -72,6 +85,15 @@ class EnrollmentService {
   /// The most recently stored token for this user, if enrollment has
   /// already happened this session (or in a previous one).
   Future<String?> storedToken(String userId) => _secureStorage.read(key: _tokenStorageKeyFor(userId));
+
+  /// The epoch recorded at this user's last successful enroll/refresh —
+  /// what Task 5's offline verifier compares a presented token's epoch
+  /// against. Null if this user has never successfully enrolled on this
+  /// device.
+  Future<int?> knownEpoch(String userId) async {
+    final stored = await _secureStorage.read(key: _knownEpochStorageKeyFor(userId));
+    return stored == null ? null : int.parse(stored);
+  }
 
   Future<String> _enrollApiUrl() async {
     final configJson = await rootBundle.loadString('amplify_outputs.json');
