@@ -55,12 +55,28 @@ IN PROGRESS — Tasks 0, 1, and 2 complete. Task 3 IN PROGRESS (Flutter scaffold
 - **Plugin research (resolved):** Flutter has no built-in hardware-backed asymmetric key generation. Nigel chose "vet a maintained plugin first," then confirmed the recommendation. Rejected candidates: `keystore_plugin` (supports it, but last published ~12 months ago, 1 like — under-maintained), `flutter_secp256r1` (pub.dev page 404s, couldn't verify), `biometric_crypto`/`synheart_auth` (not vetted in depth once a strong candidate emerged). **Chosen: `biometric_signature`** — verified publisher (visionflutter.com), actively maintained (v13, published 46 days prior), 160 pub points / 54 likes / 28.7k downloads, MIT license, supports multiple named keys via `keyAlias` (reusable for Task 6's per-user keys).
 
 ## Task 4: Enrollment flow, end to end (online)
-- **Status:** NOT STARTED
+- **Status:** NOT STARTED — scoped and sub-decomposed 2026-09-09, not yet approved to start
 - **Setup:** Tasks 2 and 3 complete.
-- **Work:** Full [[../Architecture/Enrollment Flow|Enrollment Flow]] — a real login screen for Cognito OIDC, per-user keypair generation, the `enroll` AppSync mutation, KMS-signed token issuance, encrypted local storage of the result, PIN/biometric setup for that profile.
-- **Verify:** **Second on-screen milestone:** a real person taps through an actual login screen, signs in online, and watches enrollment complete — the app shows a valid, correctly-signed offline token stored locally (inspectable in a debug view). Confirmed against the deployed sandbox from Task 2, not mocked.
+- **Scoping note (2026-09-09):** Task 4 alone crosses 5 layers (Flutter → Cognito → AppSync → Lambda → KMS → DynamoDB), adds new crypto wiring and new IAM surface, and has well over 3 acceptance criteria — too big for one sitting per the Story Agent's own rubric. Split into 4a/4b/4c below, mechanism before policy. **Scoping decision confirmed with Nigel:** Task 4c stores the enrollment token via `flutter_secure_storage`'s own OS-level encryption only — no PIN wrapping yet. The [[../Architecture/Enrollment Flow|Enrollment Flow]] diagram's steps 6–7 (PIN/biometric setup, PIN-wrapped encryption) are real but deferred to Task 6 as originally scoped in this checkpoint, not pulled forward — keeps Task 4 reviewable in one sitting and separates mechanism from policy.
+
+### Task 4a: Enrollment Lambda + AppSync mutation (backend only, no UI)
+- **Work:** Add an AppSync GraphQL API to `amplify/backend.ts` with an `enroll` mutation, Cognito User Pool-authorized. Lambda resolver takes `{devicePubKey, userPubKey}`, writes a row to `DeviceEnrollments`, calls `kms:Sign` to issue the offline capability token (`user_id`, `device_id`, `scopes`, `epoch`, ~48h expiry), returns it. Grant only `kms:Sign` + scoped DynamoDB read/write on the Lambda's role — no broader IAM. Bake the issuer's public key into the app once via `kms:GetPublicKey` (checked in), per [[../Security/Trust Anchors|Trust Anchors]].
+- **Verify:** Call the `enroll` mutation directly against the sandbox with a real Cognito test-token; get back a JWT; verify its signature locally against the baked-in public key (same `openssl dgst -verify` pattern as Task 2's KMS verification). No Flutter UI involved yet.
+- **Save:** Enrollment Lambda deployed to sandbox, callable, producing verifiably-signed tokens.
+- **Depends on:** Task 2.
+- **Requires:** "Be Careful" Review Agent pass before commit (new IAM/KMS surface) — see [[../../agents/review-agent/review-agent|Review Agent]].
+
+### Task 4b: Flutter Cognito login screen
+- **Work:** Add `amplify_flutter` + `amplify_auth_cognito`, initialize Amplify in `main.dart`, build a real sign-up/sign-in screen against the deployed User Pool (`ap-southeast-2_B1k3XjP8l`).
+- **Verify:** A real person signs up/in on screen against the actual Cognito pool; the screen shows an authenticated state.
+- **Save:** Working login screen, authenticated session obtainable.
+- **Depends on:** Task 2. (Independent of 4a — order between 4a/4b doesn't matter; both must land before 4c.)
+
+### Task 4c: Wire it end to end + local storage of the result
+- **Work:** Generate a per-user keypair, generalizing Task 3's `device_identity_service` pattern to a parameterized key alias (Trust Anchor 3). Call `enroll` with both pubkeys + the ID token from 4b, receive the signed token, store it via `flutter_secure_storage` (placeholder encryption — see scoping decision above), add a debug view showing decoded claims and a live signature check against the bundled public key.
+- **Verify:** **Second on-screen milestone** (unchanged from original Task 4 verify): a real person taps through login, signs in online, and watches enrollment complete — the app shows a valid, correctly-signed offline token stored locally (inspectable in a debug view). Confirmed against the deployed sandbox, not mocked.
 - **Save:** One real enrolled profile exists on a test device.
-- **Depends on:** Task 3
+- **Depends on:** Task 4a, Task 4b, Task 3.
 
 ## Task 5: Offline verification (the core hard part)
 - **Status:** NOT STARTED
@@ -117,6 +133,7 @@ IN PROGRESS — Tasks 0, 1, and 2 complete. Task 3 IN PROGRESS (Flutter scaffold
 
 - **2026-09-09:** Initial plan drafted from the architecture note, decomposed into 9 tasks (0 documentation + 8 build tasks) per Story Agent scoring (12, Large).
 - **2026-09-09:** Scope change — inserted a new Task 1 (GitHub repository + Amplify Hosting git connection) ahead of the Amplify Gen 2 skeleton. Amplify's hosted backend build pipeline requires a connected git provider; the repo had no remote and no commits yet. All subsequent tasks renumbered (old Task 1 → 2, ... old Task 9 → 10). Flagged by Nigel mid-Task-1-execution, before any AWS deploy happened.
+- **2026-09-09:** Task 4 sub-decomposed into 4a (Enrollment Lambda + AppSync mutation, backend-only), 4b (Flutter Cognito login screen), 4c (wire end to end + local storage of the token) — too big for one sitting as a single task per the Story Agent's own complexity rubric. Confirmed with Nigel: Task 4c uses placeholder (`flutter_secure_storage`-only) local storage, not pulling Task 6's PIN/Argon2id wrapping forward. Not yet approved to start execution.
 
 ---
 
