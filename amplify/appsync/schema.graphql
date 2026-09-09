@@ -1,0 +1,28 @@
+# Roster Vault enrollment API (Task 4a).
+#
+# Deliberately not modeled through Amplify's `data` construct -- see
+# amplify/backend.ts and docs/roster-vault/Backend/Backend Index.md. This is
+# a single custom mutation backed directly by a Lambda resolver, authorized
+# by the existing Cognito User Pool (amplify/auth/resource.ts). AppSync
+# itself verifies the caller's ID token before the resolver ever runs; the
+# Lambda reads the verified identity from $ctx.identity, it does not
+# re-verify the token.
+
+type EnrollResult {
+  token: String!
+  epoch: Int!
+  expiresAt: AWSTimestamp!
+}
+
+type Mutation {
+  # deviceId is generated client-side once per device (Trust Anchor 2,
+  # Task 3) and passed in here, not derived server-side -- the server has
+  # no way to know a device's identity except what the device asserts and
+  # binds into its keypair.
+  enroll(deviceId: String!, devicePubKey: String!, userPubKey: String!): EnrollResult!
+}
+
+# AppSync requires a Query type even when unused by this API's own client.
+type Query {
+  _placeholder: String
+}

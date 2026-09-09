@@ -9,6 +9,8 @@ Signs every offline capability token. Never touches app memory, and never touche
 - **What it is:** a KMS asymmetric CMK, `ECC_NIST_P256`.
 - **Where it lives:** AWS KMS. Signing happens via `kms:Sign`, called from the Enrollment Lambda. The private key material never leaves KMS.
 - **What ships in the app:** only the **public** half, retrieved via `kms:GetPublicKey` at build/deploy time and baked into the app so signature verification is pure local math with no network call. See [[../../agents/review-agent/review-agent|Review Agent]] checklist item 1 — this distinction (public key shipped, private key never exportable) is the single most important thing to get right and keep right.
+  - **Implemented in (Task 4a):** `lib/services/issuer_public_key.dart`, a checked-in PEM constant with the exact `kms get-public-key` + `openssl` regeneration command in its doc comment. Not yet consumed by any verification code (that's Task 5) — this task only issues tokens and bakes in the public key for the following task to use.
+- **Signing implementation (Task 4a):** `amplify/functions/enroll/handler.ts` builds a standard ES256 JWS by hand (header + payload signed via `kms:Sign`, `SigningAlgorithm: ECDSA_SHA_256`). KMS returns the signature DER-encoded; JWS requires the raw fixed-width 64-byte `R‖S` format, so the handler does that conversion itself — the one non-obvious piece of wire-format code in the whole enrollment path.
 
 ## Anchor 2 — Device Keypair
 
