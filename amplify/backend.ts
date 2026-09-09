@@ -32,7 +32,7 @@ const coreStack = backend.createStack('RosterVaultCore');
 const issuerSigningKey = new kms.Key(coreStack, 'IssuerSigningKey', {
   keySpec: kms.KeySpec.ECC_NIST_P256,
   keyUsage: kms.KeyUsage.SIGN_VERIFY,
-  alias: 'alias/roster-vault-issuer-signing-key',
+  alias: `alias/roster-vault-issuer-signing-key-${coreStack.stackName}`,
   description:
     'Roster Vault offline-capability-token issuer key (Trust Anchor 1). ' +
     'Signs offline tokens via kms:Sign; only the public half ever ships in the app, via kms:GetPublicKey.',
@@ -43,7 +43,6 @@ const issuerSigningKey = new kms.Key(coreStack, 'IssuerSigningKey', {
 // DeviceEnrollments (docs/roster-vault/Backend/Tech Stack Mapping.md) — one
 // row per enrolled person per device.
 const deviceEnrollments = new dynamodb.Table(coreStack, 'DeviceEnrollments', {
-  tableName: 'DeviceEnrollments',
   partitionKey: { name: 'deviceId', type: dynamodb.AttributeType.STRING },
   sortKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
