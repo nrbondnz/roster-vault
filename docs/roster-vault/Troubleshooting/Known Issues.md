@@ -2,6 +2,20 @@
 
 Operational surprises, third-party bugs, and tooling quirks discovered while running this project for real — captured the moment they're understood, per the [[../../agents/docs-agent/docs-agent|Docs Agent]]'s directive. These are not necessarily code defects in this repo; several are third-party or environment issues that just happen to block work here.
 
+## MITIGATED, NOT YET VERIFIED — iOS Keychain survives app deletion (unlike Android)
+
+**Found while scoping iOS support (2026-09-10), before any Mac was available to test on — confirmed via Apple's own documented Keychain behavior, not assumed to be a problem and then fixed blind.**
+
+**The issue:** `flutter_secure_storage` backs onto the iOS Keychain, and Keychain items are **not** removed when an app is deleted — a well-documented, deliberate Apple platform behavior (Keychain is designed to survive reinstalls, e.g. so a banking app doesn't lose saved credentials). Every other platform this project targets does the opposite: uninstalling on Android wipes all app-scoped storage, and this project's whole Windows dev-convenience testing has relied on that same assumption implicitly.
+
+For a project whose entire premise is a shared, unmanaged device with **no MDM to fall back on** ([[../Management/The Actual Requirement|The Actual Requirement]]), that's a real behavioral gap, not a cosmetic one: on iOS specifically, deleting and reinstalling Roster Vault would silently keep the old `K_device` ([[../Security/Trust Anchors|Trust Anchor 2]]), every enrolled token, and every PIN-wrapped partition key from before the reinstall — none of this project's "clean slate on this device" guarantees would actually reset, unlike the identical action on Android.
+
+**Fix applied:** `lib/services/fresh_install_guard.dart` (`FreshInstallGuard`) — called first thing in `main()`, before anything else touches secure storage or opens a partition file. Detects a fresh install via a marker file in the app's own support directory (which, unlike Keychain, genuinely is removed by iOS's app-sandbox contract on uninstall): marker absent + secure storage non-empty = stale data from a previous install, wiped (`deleteAll()` plus any `roster_vault_partition_*` files); marker absent + secure storage empty = a genuine first-ever install, nothing to wipe. A harmless no-op on Android/Windows, where secure storage already starts clean on install without any help from this class. Also added `NSFaceIDUsageDescription` to `ios/Runner/Info.plist` while in there, ahead of Task 6's planned biometric-gated per-user credential path — a missing usage string is a hard App Store rejection, not a soft warning.
+
+**Tested:** `test/fresh_install_guard_test.dart`, 4 cases (genuine first install, ordinary relaunch leaves data alone, stale-Keychain-wiped, running it twice doesn't re-wipe this install's own real data) — all against a real temp directory and a real in-memory secure-storage fake, not just "the code runs."
+
+**NOT yet verified:** whether this actually behaves correctly against the *real* iOS Keychain and the *real* app-sandbox uninstall behavior — there is no Mac in this environment to install, delete, and reinstall the real app on. The logic is sound and tested at the unit level; the real-device behavior it's designed around is taken from Apple's documentation, not observed directly. Re-verify for real the moment a Mac is available, the same "prove it, don't just claim it" bar every other platform guarantee in this project has been held to.
+
 ## RESOLVED — `biometric_signature` "Foreground activity required" on real Android hardware (was a missed setup step, not a plugin bug)
 
 **Symptom:** [[../Security/Trust Anchors|Trust Anchor 2]]'s device-keypair generation (`DeviceIdentityService.ensureDeviceIdentity`, via `biometric_signature`) threw `BiometricError.unknown "Foreground activity required"` on a real Samsung Galaxy A06 (Android 16 / API 36), visible on screen as `Device identity failed: Bad state: Device key generation failed: BiometricError.unknown Foreground activity required`.

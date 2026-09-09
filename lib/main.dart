@@ -12,6 +12,7 @@ import 'screens/roster_screen.dart';
 import 'services/device_identity_service.dart';
 import 'services/encrypted_partition_store.dart';
 import 'services/enrollment_service.dart';
+import 'services/fresh_install_guard.dart';
 import 'services/issuer_public_key.dart';
 import 'services/local_unlock_service.dart';
 import 'services/offline_verifier.dart';
@@ -21,6 +22,11 @@ import 'services/user_identity_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // iOS-readiness scoping (2026-09-10) -- must run before anything else
+  // touches flutter_secure_storage or opens a partition file. See
+  // FreshInstallGuard's own doc comment for why this exists at all: iOS
+  // Keychain data survives app deletion, unlike Android.
+  await FreshInstallGuard().ensureCleanSlateOnFreshInstall();
   // Task 8 -- configured here, unconditionally, at startup, rather than
   // only lazily inside AuthGate's own bootstrap. RosterScreen is the app's
   // real home now (Task 7) and its normal offline path -- unlock a profile

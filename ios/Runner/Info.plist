@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Not yet exercised by any requireAuthentication:true key on this platform
+	     (Trust Anchor 2's device key and the current per-user key both pass
+	     requireAuthentication: false) -- added ahead of need for Task 6's planned
+	     biometric-gated per-user credential path and any future local_auth use,
+	     since a missing usage string is a hard App Store rejection, not a runtime
+	     warning. See docs/roster-vault/Troubleshooting/Known Issues.md. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Roster Vault uses Face ID to unlock your profile on this device.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

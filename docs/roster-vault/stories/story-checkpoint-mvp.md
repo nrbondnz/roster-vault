@@ -402,3 +402,20 @@ Follow-up to the Doc Update above. That pass documented the `biometric_signature
   5. Task 7 — real roster screen, tap-to-switch between two people
   6. Task 8 — roster shows per-profile refresh/refuse outcome after a revocation
   7. Task 9 — visible on-screen block for clock rollback and for lockout
+
+---
+
+## Post-Story: iOS Readiness Scoping (2026-09-10)
+
+The MVP story above is DONE; this is real follow-on work, not a reopening of any task. Nigel asked how this solution changes for an iOS client. **No Mac exists anywhere in this environment** — Xcode is macOS-only, and unlike Android there's no cross-platform emulator path either, so nothing below is verified on real hardware. What could be done responsibly without one: research grounded in actually reading the plugin's real iOS source (not guessing), and a real, tested code fix for the one genuine risk that research surfaced.
+
+**Findings** (full detail in [[../Security/Trust Anchors|Trust Anchors]] Anchor 2 and [[../Troubleshooting/Known Issues|Known Issues]]):
+- `biometric_signature`'s iOS implementation (`BiometricSignaturePlugin.swift`, read directly) defaults to a genuine Secure Enclave P-256 key for `signatureType: .ecdsa`, DER-encoded signatures matching Android's format, and — critically — deliberately omits any passcode/biometry requirement when `requireAuthentication: false` (this project's actual setting), avoiding the whole class of problem the `FlutterFragmentActivity` gap caused on Android. Encouraging, but "the source looks right" was exactly the bar that gap also cleared before it turned out to be broken — real verification still needs real hardware.
+- **A genuine, not-cosmetic gap, found and fixed:** iOS Keychain survives app deletion, unlike Android. Fixed with `FreshInstallGuard` (`lib/services/fresh_install_guard.dart`), wired into `main()` before anything else touches secure storage, tested (`test/fresh_install_guard_test.dart`, 4 cases, real temp directory + real in-memory storage fake). Unit-level proof only — the real iOS Keychain/uninstall behavior it's designed around is taken from Apple's documentation, not observed.
+- `NSFaceIDUsageDescription` added to `ios/Runner/Info.plist` ahead of need (Task 6's planned biometric per-user credential path) — a missing usage string is a hard App Store rejection.
+- `flutter_secure_storage`'s `synchronizable` (iCloud Keychain sync) default confirmed `false` in the package source — Trust Anchor 2's device-bound key won't silently sync across a person's other devices. Checked, not assumed.
+- Not yet investigated: `local_auth` (declared in [[../Backend/Tech Stack Mapping|Tech Stack Mapping]] but not wired into any service yet, on any platform), and whether `sqlite3mc` (Task 6's real encryption) ships a precompiled iOS binary the same way it does for Android/Windows — the hook docs imply yes ("all platforms supported by Dart") but this wasn't independently confirmed.
+
+**Verified on this machine:** `flutter analyze` clean, `flutter test` all passing (38, up from 34), `flutter build windows --debug` still succeeds — this pass didn't break anything on the platforms that can actually be checked here.
+
+**What happens next:** Nigel is moving to a Mac to pick this up. First real iOS pass should be: `flutter build ios`/run on a simulator or real device, confirm `biometric_signature` actually produces a P-256 key (not a surprise RSA fallback the way Windows does), confirm the DER-to-raw conversion holds, and — the one thing this session could only reason about, not test — actually delete and reinstall the app once to confirm `FreshInstallGuard` really does wipe stale Keychain data on a real device.
