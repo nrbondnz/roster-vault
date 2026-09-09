@@ -35,6 +35,8 @@ Every one of the checks above runs entirely on-device. The only thing that ever 
 ## See Also
 
 - [[Architecture Index]]
+- [[Data Flow]] — this same flow as a concrete, step-by-step sequence against the real code, including the actual airplane-mode verification procedure
+- [[System Diagram]] — the components-and-arrows version
 - [[Enrollment Flow]]
 - [[Multi-User Partitioning]]
 - [[../Security/Trust Anchors|Trust Anchors]]

@@ -2,6 +2,8 @@
 
 The cloud side of this system is only ever in the loop during enrollment and periodic refresh. It is never consulted at the moment someone signs in — that's the entire point. See [[../Management/The Actual Requirement|The Actual Requirement]] for why.
 
+**The app's real entry point (Task 7) is the roster screen** — a local, on-device list of everyone already enrolled here, read from `RosterRegistryService` with no network call. Tapping a name prompts for that person's PIN and, on success, runs the offline sign-in flow below. "Add a person" is the one online-only action reachable from the roster, pushing the same Cognito sign-in / enrollment flow (`AuthGate` → `LoginScreen`) that used to be the app's forced front door through Task 6 — it's greyed out whenever the device has no connectivity, rather than left enabled to fail partway through. See [[System Diagram]] for the full box-and-arrow picture and [[Data Flow]] for the step-by-step sequence of each flow below.
+
 ```mermaid
 flowchart LR
   subgraph Cloud["AWS Amplify Gen 2 — reachable only while online"]
@@ -49,4 +51,6 @@ Trust is anchored in three pieces of key material — see [[../Security/Trust An
 ## See Also
 
 - [[Architecture Index]]
+- [[System Diagram]] — the full box-and-arrow picture, including the roster/unlock flow
+- [[Data Flow]] — the same flows, as step-by-step sequences
 - [[../Security/Security Index|Security Index]]

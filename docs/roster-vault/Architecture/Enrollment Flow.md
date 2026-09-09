@@ -46,5 +46,7 @@ The same call happens again, silently, whenever the device is online and the app
 ## See Also
 
 - [[Architecture Index]]
+- [[Data Flow]] — this same flow as a concrete, step-by-step sequence against the real code
+- [[System Diagram]] — the components-and-arrows version
 - [[Offline Sign-In Flow]]
 - [[../Security/Trust Anchors|Trust Anchors]]

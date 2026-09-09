@@ -5,12 +5,12 @@ The part a generic architecture answer usually skips — what each piece of [[..
 | Requirement | AWS Amplify Gen 2 | Flutter |
 |---|---|---|
 | Online identity check | Cognito User Pool | `amplify_auth_cognito` |
-| Enrollment / refresh API | AppSync mutation → Lambda resolver | `amplify_api` |
+| Enrollment / refresh API | AppSync mutation → Lambda resolver | `http` (plain authenticated POST — not the typed `amplify_api` client, since `enroll` is a custom AppSync endpoint outside Amplify's `data` category; see `amplify/backend.ts`'s own comment and `EnrollmentService`) |
 | Token signing | KMS asymmetric CMK (`ECC_NIST_P256`), signed via `kms:Sign` from Lambda | `dart_jsonwebtoken` (verify only — never signs) |
 | Device / user / epoch records | DynamoDB — `DeviceEnrollments` table | — |
 | Device & per-user keys | — | `flutter_secure_storage` over Android Keystore / iOS Keychain |
 | Local unlock factor | — | `local_auth` (biometric) + Argon2id PIN fallback via `cryptography` |
-| Per-user encrypted local data | — | `drift` + `sqlcipher_flutter_libs`, key = `HKDF(K_device, user_id)` |
+| Per-user encrypted local data | — | `package:sqlite3` 3.x (`sqlite3mc` cipher build, selected via `pubspec.yaml`'s `hooks.user_defines` — `sqlcipher_flutter_libs` is EOL upstream; `EncryptedPartitionStore` uses `package:sqlite3` directly, not `drift`'s query builder), key = `HKDF(K_device, user_id)` |
 | Reconnect / silent refresh trigger | — | `connectivity_plus`, hooked to app foreground |
 | Root/jailbreak posture check | — | best-effort integrity check package, degrade not block |
 
