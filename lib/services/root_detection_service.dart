@@ -25,7 +25,12 @@ import 'dart:io';
 /// story is Android hardware (see the story checkpoint) -- unverified on
 /// an actual jailbroken iOS device.
 class RootDetectionService {
-  const RootDetectionService();
+  /// [checkPaths] defaults to the real list below; a test can override it
+  /// with a path it actually creates, to exercise the true-positive branch
+  /// deterministically without needing an actually-rooted device.
+  const RootDetectionService({List<String>? checkPaths}) : _checkPaths = checkPaths ?? _suspiciousPaths;
+
+  final List<String> _checkPaths;
 
   static const _suspiciousPaths = <String>[
     // Common su binary locations across root implementations.
@@ -55,7 +60,7 @@ class RootDetectionService {
   /// explicitly unmanaged by design, so a hard block here would be wrong,
   /// not just unimplemented.
   bool isLikelyCompromised() {
-    for (final path in _suspiciousPaths) {
+    for (final path in _checkPaths) {
       try {
         if (File(path).existsSync()) return true;
       } catch (_) {
