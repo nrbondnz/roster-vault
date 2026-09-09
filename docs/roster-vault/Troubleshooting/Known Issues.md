@@ -16,6 +16,8 @@ For a project whose entire premise is a shared, unmanaged device with **no MDM t
 
 **NOT yet verified:** whether this actually behaves correctly against the *real* iOS Keychain and the *real* app-sandbox uninstall behavior — there is no Mac in this environment to install, delete, and reinstall the real app on. The logic is sound and tested at the unit level; the real-device behavior it's designed around is taken from Apple's documentation, not observed directly. Re-verify for real the moment a Mac is available, the same "prove it, don't just claim it" bar every other platform guarantee in this project has been held to.
 
+See [[../Architecture/Platform Differences|Platform Differences]] for how this fits alongside the other two Windows/Android/iOS divergences (device key algorithm, signature format).
+
 ## RESOLVED — `biometric_signature` "Foreground activity required" on real Android hardware (was a missed setup step, not a plugin bug)
 
 **Symptom:** [[../Security/Trust Anchors|Trust Anchor 2]]'s device-keypair generation (`DeviceIdentityService.ensureDeviceIdentity`, via `biometric_signature`) threw `BiometricError.unknown "Foreground activity required"` on a real Samsung Galaxy A06 (Android 16 / API 36), visible on screen as `Device identity failed: Bad state: Device key generation failed: BiometricError.unknown Foreground activity required`.

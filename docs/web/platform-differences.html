@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Platform Differences — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Cross-Cutting · Reference</span>
+    <h1>Platform Differences</h1>
+    <p class="dek">
+      Windows, Android, and iOS diverge in exactly three places: how the hardware-backed
+      device key actually gets created, what format its signatures come back in, and what
+      "delete the app" actually clears. Everything else — enrollment, offline verification,
+      the PIN-wraps-token design — is platform-agnostic and unchanged.
+    </p>
+  </header>
+
+  <div class="detail-body">
+    <p>
+      <strong>Read the status badges carefully.</strong>
+      <span class="status-badge verified">Verified</span> means observed on real hardware
+      this session.
+      <span class="status-badge pending">Reasoned from source</span> means the plugin's
+      actual Swift/Kotlin implementation was read directly and the conclusion follows from
+      that reading — stronger than a guess, but explicitly <em>not</em> the bar this project
+      has held everywhere else, which is proof on the device. The Android row cleared both
+      stages: it looked correct on a first read of the source too, and was still wrong until
+      it was actually run — see
+      <a href="components/device-identity-service.html">DeviceIdentityService</a>. Nothing on
+      the iOS side has cleared that second bar yet; no Mac has been available in this
+      environment to run it on.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Device key generation</h2>
+  <div style="overflow-x:auto;">
+  <table class="platform-table">
+    <thead>
+      <tr><th></th><th>Windows</th><th>Android</th><th>iOS</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>Algorithm produced</th>
+        <td>RSA-2048 — plugin ignores the requested <code>SignatureType.ecdsa</code> outright (its own documented behavior)</td>
+        <td>ECDSA P-256, hardware-backed (Android Keystore)</td>
+        <td>ECDSA P-256, hardware-backed (Secure Enclave)</td>
+      </tr>
+      <tr>
+        <th>What gates key creation</th>
+        <td>Nothing device-specific — a dev-convenience fallback, not a deployment target</td>
+        <td>Required <code>MainActivity.kt</code> to extend <code>FlutterFragmentActivity</code> instead of Flutter's template-default <code>FlutterActivity</code> — a real bug, found and fixed this session</td>
+        <td>With <code>requireAuthentication: false</code> (this project's actual setting), the plugin's source deliberately omits any passcode/biometry access-control flag — should not require a device passcode at all</td>
+      </tr>
+      <tr>
+        <th>Status</th>
+        <td><span class="status-badge verified">N/A</span> not a deployment target</td>
+        <td><span class="status-badge verified">Verified</span> 2026-09-10, Samsung Galaxy A06</td>
+        <td><span class="status-badge pending">Reasoned from source</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 class="section-heading">Signature format</h2>
+  <p style="margin:-8px 0 16px;font-size:13.5px;color:var(--text-faint);max-width:68ch;">
+    Both platforms that actually produce ECDSA P-256 encode the signature the same way — DER
+    (ASN.1 <code>SEQUENCE{INTEGER r, INTEGER s}</code>).
+  </p>
+  <div style="overflow-x:auto;">
+  <table class="platform-table">
+    <thead>
+      <tr><th></th><th>Android</th><th>iOS</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>API called</th>
+        <td><code>Signature.getInstance("SHA256withECDSA")</code> — standard JCA, always DER</td>
+        <td><code>SecKeyCreateSignature(_, .ecdsaSignatureMessageX962SHA256, _)</code> — X9.62, also DER</td>
+      </tr>
+      <tr>
+        <th>Consequence</th>
+        <td colspan="2">The DER-to-raw conversion in <code>UserIdentityService</code> (mirroring the same fix already needed for KMS's own DER output in <code>amplify/functions/enroll/handler.ts</code>) is shared, platform-agnostic Dart — not Android-specific code that needs an iOS equivalent written.</td>
+      </tr>
+      <tr>
+        <th>Status</th>
+        <td><span class="status-badge verified">Verified</span> real device-to-token round trip</td>
+        <td><span class="status-badge pending">Reasoned from source</span> not yet exercised against a real signature</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin:-4px 0 32px;font-size:13px;color:var(--text-faint);max-width:68ch;">
+    If this turns out wrong on real iOS hardware, it fails loudly (a signature verification
+    failure) — there's no silent partial-success case.
+  </p>
+
+  <h2 class="section-heading">Local storage persistence on uninstall</h2>
+  <p style="margin:-8px 0 16px;font-size:13.5px;color:var(--text-faint);max-width:68ch;">
+    The one difference with an actual behavioral consequence beyond "which crypto backend."
+  </p>
+  <div style="overflow-x:auto;">
+  <table class="platform-table">
+    <thead>
+      <tr><th></th><th>Android</th><th>iOS</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th>What "delete the app" clears</th>
+        <td>Everything — <code>flutter_secure_storage</code> and any <a href="components/encrypted-partition-store.html">EncryptedPartitionStore</a> files are app-scoped, wiped by the OS on uninstall</td>
+        <td><strong>Nothing.</strong> iOS Keychain items survive app deletion by design (Apple's own documented behavior)</td>
+      </tr>
+      <tr>
+        <th>Why it matters here</th>
+        <td>Matches the project's implicit assumption throughout</td>
+        <td>This project's entire premise is a shared, unmanaged device with <strong>no MDM</strong> — without a fix, deleting and reinstalling on an iPhone would silently keep the old device key, every enrolled token, and every PIN-wrapped partition key from before the reinstall</td>
+      </tr>
+      <tr>
+        <th>Fix</th>
+        <td>None needed</td>
+        <td><code>lib/services/fresh_install_guard.dart</code> (<code>FreshInstallGuard</code>) — called first in <code>main()</code>. Detects a fresh install via a marker file in the app support directory (which <em>is</em> removed on iOS uninstall, unlike Keychain) and wipes stale data when the marker is absent but old data is present</td>
+      </tr>
+      <tr>
+        <th>Status</th>
+        <td><span class="status-badge verified">N/A</span> no fix needed</td>
+        <td><span class="status-badge pending">Unit-tested</span> 4 cases, real temp dir + in-memory storage fake — not yet run against the real Keychain or a real install/delete/reinstall cycle</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2 class="section-heading">What's genuinely unchanged</h2>
+  <div class="detail-body">
+    <p>
+      Worth stating explicitly so the differences above don't read as bigger than they are —
+      everything downstream of key generation is identical code, no platform branches:
+      <a href="flows/enrollment.html">Enrollment</a> (the same <code>enroll</code> mutation,
+      same Lambda, same KMS signing, regardless of which platform's key made the request),
+      <a href="flows/offline-sign-in.html">Offline Sign-In</a>
+      (<code>OfflineVerifier</code> is pure Dart, no platform import at all), and the
+      PIN-wraps-token design in
+      <a href="flows/encrypted-storage.html">Encrypted Storage</a> (<code>PinService</code>,
+      <code>PartitionKeyService</code>, and <code>DeviceMasterKeyService</code> are all pure
+      Dart; <code>sqlite3mc</code> is selected via the same <code>pubspec.yaml</code> hook on
+      every platform — though whether that precompiled binary genuinely ships for iOS the
+      same way it does for Android/Windows hasn't been independently confirmed).
+    </p>
+  </div>
+
+  <h2 class="section-heading">Not yet looked at</h2>
+  <div class="notes-grid">
+    <div>
+      <h4>local_auth</h4>
+      <ul>
+        <li>Declared for biometric unlock, but not wired into <a href="components/local-unlock-service.html">LocalUnlockService</a> or any other service yet, on any platform.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>sqlite3mc on iOS</h4>
+      <ul>
+        <li>The hook documentation implies precompiled binaries ship for "all platforms supported by Dart," but this wasn't checked directly for iOS specifically.</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer class="colophon">
+    lib/services/device_identity_service.dart · lib/services/user_identity_service.dart · lib/services/fresh_install_guard.dart · docs/roster-vault/Architecture/Platform Differences.md
+  </footer>
+</div>
+</body>
+</html>

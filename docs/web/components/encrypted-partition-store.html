@@ -48,6 +48,14 @@
       deployment target — the same "Test encrypted storage" button still lives in the debug
       screen reached via "Add a person."
     </p>
+    <p>
+      <strong>iOS-specific wrinkle:</strong> unlike Android, deleting the app doesn't clear
+      these files' iOS counterpart in Keychain — see
+      <a href="../platform-differences.html">Platform Differences</a> and
+      <code>lib/services/fresh_install_guard.dart</code>, which wipes stale partition files
+      and secure-storage entries on a detected fresh install, before this class or
+      <a href="local-unlock-service.html">LocalUnlockService</a> ever touch them.
+    </p>
   </div>
 
   <h2 class="section-heading">Used in</h2>
