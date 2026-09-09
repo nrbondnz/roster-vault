@@ -53,6 +53,18 @@ dependencies:
   cryptography: ^2.9.0
   http: ^1.6.0
   dart_jsonwebtoken: ^3.4.1
+  drift: ^2.31.0
+  sqlite3: ^2.9.4
+  local_auth: ^3.0.2
+  # sqlcipher_flutter_libs was tried and reverted (Task 6) -- its Windows
+  # CMake build requires OpenSSL dev headers (`find_package(OpenSSL)`),
+  # which aren't installed on this machine, and installing system-wide dev
+  # tools is outside this project's authorized scope (this repo and its
+  # own Amplify backend only). Without it, PRAGMA key on package:sqlite3 is
+  # a silent no-op -- confirmed directly (PRAGMA cipher_version returned no
+  # rows; a written "encrypted" file's first bytes were the plaintext
+  # "SQLite format 3" header). See story checkpoint Task 6 for the full
+  # finding and what unblocking this needs.
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +76,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  drift_dev: ^2.31.0
+  build_runner: ^2.15.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
