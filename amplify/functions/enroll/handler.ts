@@ -116,7 +116,26 @@ export const handler: AppSyncResolverHandler<EnrollArgs, EnrollResult> = async (
       Key: marshall({ deviceId, userId }),
     }),
   );
-  const epoch = existing.Item ? (unmarshall(existing.Item).epoch as number) : 0;
+  const existingItem = existing.Item ? unmarshall(existing.Item) : undefined;
+
+  // Task 8 -- revocation. An admin action bumps this row's epoch AND sets
+  // status: 'revoked' in the same write (see docs/roster-vault/Security/Token
+  // Lifecycle and Revocation.md and the story checkpoint's Task 8 entry for
+  // why both together, not epoch alone: nothing in this table format lets a
+  // stateless Lambda compare "the device's last known epoch" against "the
+  // current epoch" -- that comparison only exists on-device, in
+  // OfflineVerifier. The *online* gate has to be a separate, explicit flag
+  // the Lambda can actually check server-side.
+  //
+  // Checked and refused *before* any write below -- if this fell through to
+  // the PutItemCommand first, that unconditional `status: 'active'` would
+  // silently un-revoke the row on every subsequent refresh attempt, which
+  // would make revocation impossible to enforce online at all.
+  if (existingItem?.status === 'revoked') {
+    throw new Error('enroll: this enrollment has been revoked');
+  }
+
+  const epoch = existingItem ? (existingItem.epoch as number) : 0;
 
   const nowSeconds = Math.floor(Date.now() / 1000);
   const expiresAt = nowSeconds + TOKEN_TTL_SECONDS;

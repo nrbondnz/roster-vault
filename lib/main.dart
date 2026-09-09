@@ -19,9 +19,34 @@ import 'services/roster_registry_service.dart';
 import 'services/token_verifier.dart';
 import 'services/user_identity_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Task 8 -- configured here, unconditionally, at startup, rather than
+  // only lazily inside AuthGate's own bootstrap. RosterScreen is the app's
+  // real home now (Task 7) and its normal offline path -- unlock a profile
+  // straight from the roster via LocalUnlockService -- never touches
+  // AuthGate or Amplify at all. That's correct for the offline case, but
+  // it meant any *online* feature reachable from that same offline-first
+  // path (this task's "Refresh now") would hit `Amplify.Auth.*` with
+  // Amplify never configured in this process at all, throwing a real
+  // PluginError -- caught live on the device, not in review, exactly
+  // because this session unlocked a profile without ever pushing AuthGate.
+  await ensureAmplifyConfigured();
   runApp(const RosterVaultApp());
+}
+
+/// Idempotent (checks `Amplify.isConfigured` itself) -- safe to call again
+/// from [AuthGate]'s own bootstrap as a defensive second layer, not just
+/// from [main].
+Future<void> ensureAmplifyConfigured() async {
+  if (Amplify.isConfigured) return;
+  final configJson = await rootBundle.loadString('amplify_outputs.json');
+  // Sanity-check it parses before handing it to Amplify, so a missing or
+  // malformed amplify_outputs.json fails with a clear message instead of
+  // an opaque Amplify plugin error.
+  jsonDecode(configJson);
+  await Amplify.addPlugins([AmplifyAuthCognito()]);
+  await Amplify.configure(configJson);
 }
 
 class RosterVaultApp extends StatelessWidget {
@@ -71,15 +96,7 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _bootstrap() async {
     try {
-      if (!Amplify.isConfigured) {
-        final configJson = await rootBundle.loadString('amplify_outputs.json');
-        // Sanity-check it parses before handing it to Amplify, so a missing
-        // or malformed amplify_outputs.json fails with a clear message
-        // instead of an opaque Amplify plugin error.
-        jsonDecode(configJson);
-        await Amplify.addPlugins([AmplifyAuthCognito()]);
-        await Amplify.configure(configJson);
-      }
+      await ensureAmplifyConfigured();
       final user = await Amplify.Auth.getCurrentUser();
       setState(() {
         _user = user;

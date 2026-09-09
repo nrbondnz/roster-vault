@@ -1,3 +1,4 @@
+import 'package:amplify_flutter/amplify_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
@@ -224,6 +225,10 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
   final _offlineVerifier = const OfflineVerifier();
   late final Future<OfflineVerificationResult> _verifyFuture;
 
+  bool _isRefreshing = false;
+  String? _refreshOutcome;
+  bool _refreshWasRefused = false;
+
   @override
   void initState() {
     super.initState();
@@ -242,6 +247,61 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
       userPublicKeyPem: userPubKey,
       signChallenge: (nonce) => _userIdentityService.signChallenge(widget.entry.userId, nonce),
     );
+  }
+
+  /// Task 8 — "silent refresh on app foreground when online," scoped
+  /// honestly rather than built as the architecture doc's full vision.
+  /// A genuinely automatic background refresh for *every* enrolled profile
+  /// simultaneously would need a live, refreshable Cognito session held
+  /// per-person at once -- Amplify's Auth category only ever holds one
+  /// active session for the whole app, the same constraint that already
+  /// makes Task 7's "Add a person" an explicit sign-out/sign-in step
+  /// rather than a background operation. So: this only ever refreshes
+  /// *this* profile, and only when their session happens to be the
+  /// currently-active one (checked explicitly below, not assumed) --
+  /// exactly the case right after enrolling or signing back in through
+  /// "Add a person". Flagged here rather than silently narrowed, since
+  /// the gap between "this" and "every profile, always, invisibly" is a
+  /// real one, not a rounding error.
+  ///
+  /// Reuses [EnrollmentService.enroll] unchanged -- on refusal it throws
+  /// *before* touching local storage (see its own source), so a revoked
+  /// refresh attempt never overwrites the still-valid, already-verified
+  /// local token/known-epoch. That's exactly why an already-signed-in
+  /// person stays signed in until their token's natural expiry even after
+  /// being revoked online -- not a separate mechanism, a consequence of
+  /// this one already being correct.
+  Future<void> _refresh() async {
+    setState(() {
+      _isRefreshing = true;
+      _refreshOutcome = null;
+      _refreshWasRefused = false;
+    });
+    try {
+      await ensureAmplifyConfigured();
+      final currentUser = await Amplify.Auth.getCurrentUser();
+      if (currentUser.userId != widget.entry.userId) {
+        setState(() => _refreshOutcome =
+            'Can\'t refresh right now — this device\'s active online session belongs to someone else. '
+            'Sign in as ${widget.entry.displayName} again (via "Add a person") to refresh their access.');
+        return;
+      }
+      final identity = await _deviceIdentityService.ensureDeviceIdentity();
+      final userPubKey = await _userIdentityService.ensureUserKeyPair(widget.entry.userId);
+      await _enrollmentService.enroll(
+        deviceId: identity.deviceId,
+        devicePubKey: identity.publicKeyPem,
+        userPubKey: userPubKey,
+      );
+      setState(() => _refreshOutcome = 'Refreshed — access confirmed still active.');
+    } catch (e) {
+      setState(() {
+        _refreshWasRefused = true;
+        _refreshOutcome = 'Refresh refused: $e';
+      });
+    } finally {
+      if (mounted) setState(() => _isRefreshing = false);
+    }
   }
 
   @override
@@ -281,6 +341,36 @@ class _ProfileHomeScreenState extends State<ProfileHomeScreen> {
                     color: result.isValid ? Colors.green : Colors.red,
                   ),
                 ),
+                const SizedBox(height: 32),
+                const Text('Refresh (Task 8)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Calls the enroll/refresh API again while online -- an admin-revoked profile is '
+                  'refused here without touching the already-verified local session above.',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    key: const Key('refreshButton'),
+                    onPressed: _isRefreshing ? null : _refresh,
+                    child: _isRefreshing
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Refresh now'),
+                  ),
+                ),
+                if (_refreshOutcome != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _refreshOutcome!,
+                    key: const Key('refreshOutcome'),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: _refreshWasRefused ? Colors.red : Colors.green,
+                    ),
+                  ),
+                ],
               ],
             );
           },
