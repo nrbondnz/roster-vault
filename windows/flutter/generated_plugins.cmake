@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  amplify_db_common
   biometric_signature
   flutter_secure_storage_windows
 )
