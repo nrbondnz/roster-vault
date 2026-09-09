@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'services/device_identity_service.dart';
@@ -38,7 +40,14 @@ class _DeviceDebugScreenState extends State<DeviceDebugScreen> {
   @override
   void initState() {
     super.initState();
-    _deviceIdentity = widget.deviceIdentityService.ensureDeviceIdentity();
+    _deviceIdentity = widget.deviceIdentityService.ensureDeviceIdentity().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => throw TimeoutException(
+        'Device key generation did not respond in time. On Windows this plugin falls back to '
+        'RSA via Windows Hello/TPM, which requires a Windows Hello PIN to be configured on this '
+        'machine — this platform is a dev convenience, not the deployment target (Android/iOS).',
+      ),
+    );
   }
 
   @override

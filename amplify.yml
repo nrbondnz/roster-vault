@@ -1,0 +1,32 @@
+version: 1
+backend:
+  phases:
+    build:
+      commands:
+        # npm ci is deliberately not used here: aws-cdk-lib's optional
+        # dependencies (its own toolkit-lib subtree) resolve inconsistently
+        # between `npm install` and `npm ci` on this project as of
+        # aws-cdk-lib 2.267 / npm 11 — each `npm ci` run reports a
+        # different "Missing: X from lock file" package. `npm install` is
+        # idempotent and reliable here; see Task 1 of
+        # docs/roster-vault/stories/story-checkpoint-mvp.md.
+        - npm install --cache .npm --prefer-offline
+        - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+# This repo's actual frontend is a Flutter app, which Amplify Hosting does not
+# build or serve. This "frontend" phase exists only because Amplify Hosting
+# requires every connected branch to publish something; it publishes a
+# placeholder page rather than anything meaningful. See Task 1 of
+# docs/roster-vault/stories/story-checkpoint-mvp.md.
+frontend:
+  phases:
+    build:
+      commands:
+        - mkdir -p ./dist
+        - echo "Roster Vault: this Amplify app deploys the backend only. There is no web frontend here." > ./dist/index.html
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
