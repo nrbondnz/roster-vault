@@ -53,7 +53,7 @@
     <div>
       <h4>Simulator run</h4>
       <ul>
-        <li><span class="status-badge pending">In progress</span> first debug build to "iPhone 17 Pro" simulator — confirms the app builds and boots on iOS, but the simulator has no Secure Enclave, so it cannot verify real device-key generation.</li>
+        <li><span class="status-badge verified">Verified</span> first debug build to "iPhone 17 Pro" simulator succeeded and booted to the real home screen (roster list, "Add a person") — confirms the app genuinely builds and runs on iOS. Expected limit, not a bug: the simulator has no Secure Enclave, so it cannot verify real device-key generation, and its root-detection banner fired (a likely simulator-environment false positive — the check is non-blocking by design either way) — needs confirming it stays quiet on real hardware.</li>
       </ul>
     </div>
     <div>
@@ -63,6 +63,15 @@
       </ul>
     </div>
   </div>
+  <p style="margin:8px 0 0;font-size:13px;color:var(--text-faint);max-width:68ch;">
+    <strong>Where this is expected to land:</strong> nothing found so far suggests the iOS
+    rows below will resolve any differently than reasoned — DER signatures, no-passcode
+    Secure Enclave key, and <code>FreshInstallGuard</code>'s Keychain wipe should all just
+    work once the signing blocker is cleared. That's a prediction, not evidence; the same
+    prediction was made (correctly, on that occasion) about Android before the
+    <code>FlutterFragmentActivity</code> gap turned out to be real. Real-device confirmation
+    is still the next session's actual job, not a formality.
+  </p>
 
   <h2 class="section-heading">Device key generation</h2>
   <div style="overflow-x:auto;">
