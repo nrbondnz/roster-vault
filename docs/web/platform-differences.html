@@ -57,20 +57,24 @@
       </ul>
     </div>
     <div>
-      <h4>Real device (nigel's iPhone, wireless)</h4>
+      <h4>Real device (nigel's iPhone)</h4>
       <ul>
-        <li><span class="status-badge pending">Blocked</span> not a code problem — Xcode's cached signing team (a Personal Team tied to a different Apple ID) doesn't match the intended Apple Developer account (<code>bondsfamily0007@gmail.com</code>). Fix is signing into Xcode → Settings → Accounts with that account and letting it re-provision <code>com.rostervault.rosterVault</code>; only then can the Secure Enclave key-generation and Keychain-survives-uninstall rows below actually clear the real-hardware bar.</li>
+        <li><span class="status-badge verified">Verified</span> real signing team resolved (<code>DEVELOPMENT_TEAM = QCQ64RLD77</code>, the paid Individual account, not the free Personal Team Xcode was defaulting to), USB pairing reset via <code>xcrun devicectl manage unpair</code>/<code>pair</code> after a stuck host-side pairing daemon (<code>remotepairingd</code>/<code>CoreDeviceService</code>) needed restarting, and a stale CocoaPods sandbox needed a fresh <code>pod install</code> after <code>flutter clean</code>. None of that was an iOS-code problem — all toolchain/environment. Real launch achieved, real enrollment run.</li>
       </ul>
     </div>
   </div>
   <p style="margin:8px 0 0;font-size:13px;color:var(--text-faint);max-width:68ch;">
-    <strong>Where this is expected to land:</strong> nothing found so far suggests the iOS
-    rows below will resolve any differently than reasoned — DER signatures, no-passcode
-    Secure Enclave key, and <code>FreshInstallGuard</code>'s Keychain wipe should all just
-    work once the signing blocker is cleared. That's a prediction, not evidence; the same
-    prediction was made (correctly, on that occasion) about Android before the
-    <code>FlutterFragmentActivity</code> gap turned out to be real. Real-device confirmation
-    is still the next session's actual job, not a formality.
+    <strong>Real-hardware result:</strong> Enrollment <strong>Signature: VALID</strong>, Offline
+    Sign-In <strong>Result: PASS</strong> — both on the real iPhone, both confirmed on screen. One
+    real bug was found and fixed along the way, not predicted correctly in advance: this
+    project's own <code>issuer_public_key.dart</code> had drifted to a stale sandbox KMS key
+    while the deployed backend (<code>amplify_outputs.json</code>) had moved on to a different
+    one — first-ever enrollment attempt on iOS came back <code>Signature: INVALID</code>
+    purely because of that mismatch, nothing to do with iOS itself (would have failed
+    identically on Android against the same deployment). Fixed by regenerating the baked-in
+    key from the actually-deployed one. The <code>FlutterFragmentActivity</code>-style lesson
+    from Android held again: "reasoned from source" and "actually run" are different bars,
+    and this session's real bug wasn't even in the part that was reasoned about.
   </p>
 
   <h2 class="section-heading">Device key generation</h2>
@@ -96,7 +100,7 @@
         <th>Status</th>
         <td><span class="status-badge verified">N/A</span> not a deployment target</td>
         <td><span class="status-badge verified">Verified</span> 2026-09-10, Samsung Galaxy A06</td>
-        <td><span class="status-badge pending">Reasoned from source</span></td>
+        <td><span class="status-badge verified">Verified</span> 2026-09-10, real iPhone — enrollment succeeded and its returned token verified against the deployed issuer key, which only happens if real device and user P-256 keys were generated and used correctly</td>
       </tr>
     </tbody>
   </table>
@@ -125,14 +129,15 @@
       <tr>
         <th>Status</th>
         <td><span class="status-badge verified">Verified</span> real device-to-token round trip</td>
-        <td><span class="status-badge pending">Reasoned from source</span> not yet exercised against a real signature</td>
+        <td><span class="status-badge verified">Verified</span> 2026-09-10, real iPhone — Offline Sign-In's <code>Result: PASS</code> is exactly this: a real Secure Enclave DER signature, converted to raw R‖S, verified by the same platform-agnostic <code>OfflineVerifier</code> Android uses</td>
       </tr>
     </tbody>
   </table>
   </div>
   <p style="margin:-4px 0 32px;font-size:13px;color:var(--text-faint);max-width:68ch;">
-    If this turns out wrong on real iOS hardware, it fails loudly (a signature verification
-    failure) — there's no silent partial-success case.
+    It did turn out wrong once on real iOS hardware — not here, though. The actual failure
+    (<code>Signature: INVALID</code> on enrollment) was a stale baked-in issuer public key,
+    not the DER conversion; see the callout above. This row's own conversion worked first try.
   </p>
 
   <h2 class="section-heading">Local storage persistence on uninstall</h2>
