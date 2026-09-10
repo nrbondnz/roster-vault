@@ -2,6 +2,14 @@
 
 Operational surprises, third-party bugs, and tooling quirks discovered while running this project for real — captured the moment they're understood, per the [[../../agents/docs-agent/docs-agent|Docs Agent]]'s directive. These are not necessarily code defects in this repo; several are third-party or environment issues that just happen to block work here.
 
+## RESOLVED — the Lambda side had zero tests, and `@aws-sdk/client-kms` was an undeclared dependency
+
+**Background:** found during a 2026-09-10 audit of this session's own Test Agent compliance (Nigel asked directly whether the Test Agent had been used correctly). `amplify/functions/enroll/handler.ts` — the file containing the DER-to-raw ECDSA signature conversion, deliberately duplicated in Dart specifically because that kind of wire-format logic is easy to get subtly wrong — had never had a single test. `package.json`'s `test` script was still `npm init`'s untouched placeholder.
+
+**A second, independent bug surfaced while fixing the first:** `handler.ts` imports `@aws-sdk/client-kms`, but it was never listed in `package.json`'s `dependencies` — it only resolved because something else in the dependency graph pulled it in transitively. A clean install after a lockfile regeneration that happened to drop that transitive path could have broken the Lambda at deploy time with no local signal.
+
+**Fix:** added `vitest` + `aws-sdk-client-mock`, wrote `amplify/functions/enroll/handler.test.ts` (10 tests — identity/argument validation, first-enrollment vs. re-enrollment epoch handling, the revoked-enrollment refusal, and the DER conversion tested directly against a real Node-`crypto`-generated ECDSA signature, not a hand-rolled fixture), made `@aws-sdk/client-kms` an explicit `dependencies` entry, and pointed `npm test` at `vitest run`. Full detail and the Test Report in the story checkpoint's Post-Story: Test Agent Compliance Audit section.
+
 ## MITIGATED, NOT YET VERIFIED — iOS Keychain survives app deletion (unlike Android)
 
 **Found while scoping iOS support (2026-09-10), before any Mac was available to test on — confirmed via Apple's own documented Keychain behavior, not assumed to be a problem and then fixed blind.**
