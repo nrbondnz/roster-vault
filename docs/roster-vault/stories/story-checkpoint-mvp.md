@@ -422,6 +422,29 @@ The MVP story above is DONE; this is real follow-on work, not a reopening of any
 
 ---
 
+## Post-Story: iOS Real-Hardware Verification (2026-09-10, live session with Nigel)
+
+The Mac arrived. This session did what the previous one could only scope: built, ran, and exercised the app on both the iOS Simulator and Nigel's real iPhone.
+
+**Toolchain and pairing — all environment issues, none were iOS-code problems, each found and fixed in turn:**
+- `pod install` completed cleanly (Podfile, Podfile.lock, xcconfig includes, pbxproj all reflect it) — first real confirmation every pod, `sqlite3mc` included, resolves and builds for iOS.
+- Simulator run ("iPhone 17 Pro") succeeded first try — real boot to the actual home screen (roster list, "Add a person"), screenshotted. Its root-detection banner fired, plausibly a simulator-environment false positive (the check is non-blocking by design either way); not yet independently confirmed quiet on real hardware.
+- Real-device run needed real troubleshooting, not just a settings toggle: (1) Xcode was defaulting to a free Personal Team tied to a stale account instead of the paid Individual team (`QCQ64RLD77`) actually meant for this project — fixed by pinning `DEVELOPMENT_TEAM = QCQ64RLD77` explicitly on all three Runner build configs, since Automatic signing wasn't resolving it correctly on its own; (2) the on-device debugger-attach step repeatedly hung at "Enabling developer disk image services," traced to the host Mac's `remotepairingd`/`CoreDeviceService` daemons stuck in a half-completed pairing state (confirmed via `xcrun devicectl list devices` showing `available (pairing)` instead of `paired`), fixed by killing and letting those daemons respawn, then `xcrun devicectl manage unpair`/`pair` to force a clean re-handshake; (3) `flutter clean` desynced CocoaPods' sandbox from `Podfile.lock`, breaking Xcode's own Clean Build too, until a fresh `pod install`.
+- Real launch achieved on the actual iPhone (not the simulator), VM Service connected, hot reload working.
+
+**Real result — the actual verification this whole follow-on exists for:**
+- Signed in with a fresh Cognito test user (`test-ios@rostervault.dev`, created this session via `admin-create-user`/`admin-set-user-password` against the deployed pool `ap-southeast-2_EHDlirgG1`), tapped "Enroll this device." First attempt: **`Signature: INVALID`** — but with correctly decoded claims (`user_id`, `device_id`, `epoch`, `scopes` all present and right), which ruled out a broken device/user key or a broken mutation and pointed straight at local verification.
+- **Real bug found, not predicted:** `lib/services/issuer_public_key.dart` was baked with a stale sandbox KMS key (`fdf9ab21-...`) while the deployed backend (`amplify_outputs.json`, `custom.issuerSigningKeyId`) had moved on to a different environment's key (`b0b14a86-...`, the `main-branch` deployment). Confirmed by fetching both keys via `aws kms get-public-key` and diffing them — genuinely different keys, not a formatting issue. Not an iOS bug at all; this would have failed identically on Android against this same deployment. Fixed by regenerating the constant from the currently-deployed key, with the file's own doc comment updated to point at `amplify_outputs.json` as the source of truth going forward rather than a hardcoded key id that can drift again.
+- Rebuilt, re-ran, re-enrolled: **`Signature: VALID`**, same decoded claims. Tapped "Sign in offline (verify stored token)": **`Result: PASS`** — a real Secure Enclave P-256 device and user key, a real DER signature from `biometric_signature`, the shared platform-agnostic DER-to-raw conversion, and `OfflineVerifier`, all working together on real iOS hardware. This is the same bar Task 5 cleared on Android.
+- The Device key generation and Signature format rows in [[../Architecture/Platform Differences|Platform Differences]] (and `docs/web/platform-differences.html`) are updated from "Reasoned from source" to "Verified" accordingly.
+
+**Still open, not yet reached this session:** the delete/reinstall `FreshInstallGuard` real-Keychain test, and independently confirming the root-detection false-positive theory on real hardware (it did not fire during this session's real-device testing, for what that's worth, though it wasn't specifically re-tested after the earlier simulator sighting).
+
+**Files changed:** `lib/services/issuer_public_key.dart` (stale key replaced, doc comment corrected), `ios/Runner.xcodeproj/project.pbxproj` (`DEVELOPMENT_TEAM` pinned on all three configs, plus Xcode's own recommended-settings updates), `ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme` (Xcode scheme version bump), `ios/Podfile`, `ios/Podfile.lock`, `ios/Flutter/Debug.xcconfig`, `ios/Flutter/Release.xcconfig`, `ios/Runner.xcworkspace/contents.xcworkspacedata` (CocoaPods integration), `docs/web/platform-differences.html`.
+**Checkpoint saved:** 2026-09-10
+
+---
+
 ## Post-Story: Test Agent Compliance Audit (2026-09-10)
 
 Nigel asked directly: "have you used the test agent correctly also." Answered honestly by reading [[../../agents/test-agent/test-agent|Test Agent]] in full and checking its Directives, Responsibilities, and Output Format against what this session actually did — not assumed compliant because tests existed and passed.
