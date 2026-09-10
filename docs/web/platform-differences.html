@@ -53,7 +53,7 @@
     <div>
       <h4>Simulator run</h4>
       <ul>
-        <li><span class="status-badge verified">Verified</span> first debug build to "iPhone 17 Pro" simulator succeeded and booted to the real home screen (roster list, "Add a person") — confirms the app genuinely builds and runs on iOS. Expected limit, not a bug: the simulator has no Secure Enclave, so it cannot verify real device-key generation, and its root-detection banner fired (a likely simulator-environment false positive — the check is non-blocking by design either way) — needs confirming it stays quiet on real hardware.</li>
+        <li><span class="status-badge verified">Verified</span> first debug build to "iPhone 17 Pro" simulator succeeded and booted to the real home screen (roster list, "Add a person") — confirms the app genuinely builds and runs on iOS. Expected limit, not a bug: the simulator has no Secure Enclave, so it cannot verify real device-key generation, and its root-detection banner fired (a simulator-environment false positive — the check is non-blocking by design either way, and confirmed <strong>not</strong> to fire on the real iPhone across every real-device screenshot this session, unmodified stock hardware as expected).</li>
       </ul>
     </div>
     <div>
@@ -168,7 +168,7 @@
       <tr>
         <th>Status</th>
         <td><span class="status-badge verified">N/A</span> no fix needed</td>
-        <td><span class="status-badge pending">Unit-tested</span> 4 cases, real temp dir + in-memory storage fake — not yet run against the real Keychain or a real install/delete/reinstall cycle</td>
+        <td><span class="status-badge verified">Verified</span> 2026-09-10/11, real iPhone — enrolled a profile, uninstalled the app via <code>xcrun devicectl device uninstall app</code>, reinstalled fresh, and confirmed the device identity actually changed (old device ID <code>911f98e2...</code> → new <code>5d5ff9f0...</code>), proving the previously-Keychain-persisted device key was wiped rather than silently reused. The real install/delete/reinstall cycle this row was waiting on.</td>
       </tr>
     </tbody>
   </table>
