@@ -288,7 +288,7 @@ Crosses 4+ architectural layers (Flutter → AppSync → Lambda → KMS → Dyna
 ### Gap Analysis (per the Traceability Agent's own categories)
 
 - **Missing implementation:** none found.
-- **Missing tests:** none for anything with code — everything shipped this story now has either automated test coverage or a real, screenshotted on-device demonstration (most security-critical paths have both).
+- **Missing tests:** none for anything with code *on the Dart side* — everything shipped this story now has either automated test coverage or a real, screenshotted on-device demonstration (most security-critical paths have both). **Correction (2026-09-10, Post-Story audit below):** this line was wrong when written — the TypeScript Lambda side (`amplify/functions/enroll/handler.ts`) had zero tests at the time, missed because this traceability pass only ran `flutter test`. Left here struck through in spirit rather than silently rewritten; see the Post-Story audit for the fix.
 - **Missing requirements / orphan code:** none found — every service file added this story traces to a specific task and a specific line in either [[../Management/The Actual Requirement|The Actual Requirement]] or the [[../Security/Risk Register|Risk Register]].
 - **Stale links:** one found and fixed (Task 4's parent status line, see Work above).
 - **Two honestly-flagged, real, open gaps** (not blocking DONE, both are hardware/tooling-availability limits, not code defects):
@@ -419,3 +419,46 @@ The MVP story above is DONE; this is real follow-on work, not a reopening of any
 **Verified on this machine:** `flutter analyze` clean, `flutter test` all passing (38, up from 34), `flutter build windows --debug` still succeeds — this pass didn't break anything on the platforms that can actually be checked here.
 
 **What happens next:** Nigel is moving to a Mac to pick this up. First real iOS pass should be: `flutter build ios`/run on a simulator or real device, confirm `biometric_signature` actually produces a P-256 key (not a surprise RSA fallback the way Windows does), confirm the DER-to-raw conversion holds, and — the one thing this session could only reason about, not test — actually delete and reinstall the app once to confirm `FreshInstallGuard` really does wipe stale Keychain data on a real device.
+
+---
+
+## Post-Story: Test Agent Compliance Audit (2026-09-10)
+
+Nigel asked directly: "have you used the test agent correctly also." Answered honestly by reading [[../../agents/test-agent/test-agent|Test Agent]] in full and checking its Directives, Responsibilities, and Output Format against what this session actually did — not assumed compliant because tests existed and passed.
+
+**Followed correctly:** the Dart-side Responsibilities (offline verification's five checks independently and in combination, PIN wrap/unwrap and partition isolation with real crypto — nothing mocked at that boundary — `FreshInstallGuard` refactored specifically for dependency-injected testability), the naming/determinism/independence Quality Standards on almost every test, and Directive 1 (tests run and green before every commit this session).
+
+**Three real gaps found, all fixed in this pass, not just logged:**
+
+1. **The entire TypeScript/Lambda Responsibility was skipped.** The spec requires handler tests for the enrollment Lambda mocking Cognito claims and KMS `Sign`/`GetPublicKey`, plus utility-function tests for the DER-to-raw conversion. `amplify/functions/enroll/handler.ts` had zero tests, and `package.json`'s `test` script was still the untouched `npm init` placeholder. **Fixed:** added `vitest` + `aws-sdk-client-mock`, `amplify/functions/enroll/handler.test.ts` (10 tests) covering the handler's identity/argument validation, first-enrollment vs. re-enrollment epoch preservation, the revoked-enrollment refusal (asserting the write never happens, per the handler's own comment about why that ordering matters), and `derToRawEcdsaSignature` directly — including against a **real** ECDSA signature (Node `crypto`, P-256, DER-encoded) round-tripped back through a hand-built DER re-encoding to prove the raw R‖S bytes still verify, plus a hand-built DER fixture to exercise the leading-zero-padding strip/re-pad branches that a real signature's random nonce won't reliably hit. `derToRawEcdsaSignature` was made `export`ed for this (no behavior change). Also caught and fixed in passing: `@aws-sdk/client-kms` was imported by `handler.ts` but missing from `package.json`'s `dependencies` — it worked only because something else pulled it in transitively; now explicit. `npm test` now runs `vitest run`; `npx tsc --noEmit -p amplify/tsconfig.json` confirmed clean.
+2. **No Test Reports were ever produced.** The spec's Output Format and Story Agent integration call for a Test Report appended to this checkpoint after every task that adds tests — never done. This entry's own Test Report below is the first one; going forward, new tasks should append theirs in this format rather than only describing test changes in prose.
+3. **One test had a real timing dependency**, contradicting the spec's own explicit determinism directive ("inject a clock rather than reading the system clock directly — this project's own clock-rollback defence makes this doubly important to get right"). `task9_hardening_test.dart`'s `PinLockoutService` expiry test used a real `Duration(milliseconds: 1)` lockout plus a real 20ms `Future.delayed` — inconsistent with `ClockIntegrityService`'s tests two groups above it in the same file, which correctly inject `now`. **Fixed:** `PinLockoutService` gained an injectable `clock` parameter (defaults to `DateTime.now`, no behavior change for callers), and the test now advances a fake clock instead of sleeping — same assertion, runs in 0ms, no wall-clock dependency.
+
+### Test Report — 2026-09-10 (Post-Story audit)
+
+**New Tests**
+- `amplify/functions/enroll/handler.test.ts::derToRawEcdsaSignature converts a real KMS-shaped DER signature to 64-byte raw R||S`
+- `amplify/functions/enroll/handler.test.ts::derToRawEcdsaSignature round-trips: the raw signature still verifies against the same public key`
+- `amplify/functions/enroll/handler.test.ts::derToRawEcdsaSignature strips DER leading-zero padding and re-pads to exactly 32 bytes`
+- `amplify/functions/enroll/handler.test.ts::derToRawEcdsaSignature rejects a non-SEQUENCE input as invalid DER`
+- `amplify/functions/enroll/handler.test.ts::enroll handler rejects a request with no verified Cognito identity`
+- `amplify/functions/enroll/handler.test.ts::enroll handler rejects a request missing required arguments`
+- `amplify/functions/enroll/handler.test.ts::enroll handler first-time enrollment starts at epoch 0 and writes an active record`
+- `amplify/functions/enroll/handler.test.ts::enroll handler re-enrollment preserves the existing epoch rather than resetting it`
+- `amplify/functions/enroll/handler.test.ts::enroll handler refuses to re-enroll a device whose enrollment has been revoked`
+- `amplify/functions/enroll/handler.test.ts::enroll handler signs the token with the real issuer key via KMS, not a stub`
+
+**Updated Tests**
+- `task9_hardening_test.dart::a lockout whose duration has already passed is treated as expired` — switched from a real wall-clock sleep to an injected fake clock
+
+**Coverage**
+- `amplify/functions/enroll/handler.ts`: all four exported/reachable branches exercised (fresh enrollment, re-enrollment, revoked refusal, missing-identity/argument guards); DER conversion tested directly, not just indirectly through the handler
+- Dart suite: 38 tests, all passing, no change in count (one test rewritten, not added)
+
+**Notes**
+- KMS's `GetPublicKey` isn't called anywhere in this handler (only `Sign`) — the spec's "mock KMS Sign/GetPublicKey" is satisfied for the operations this handler actually performs; there is no `refresh` Lambda distinct from `enroll` in this codebase (re-enrollment reuses the same handler and mutation), so one handler test file covers both spec bullets.
+- Risk Register row 7 (KMS/IAM least-privilege grant, manual-only verification) is unchanged by this pass — still a real, already-logged gap (Task 10's Gap Analysis), not something Vitest can check; a CDK/CloudFormation-level policy test would be the right tool, out of scope here.
+
+**Depends on:** Task 10
+**Files changed:** `amplify/functions/enroll/handler.test.ts` (new), `amplify/functions/enroll/handler.ts` (`derToRawEcdsaSignature` exported, no behavior change), `package.json` (`vitest`, `aws-sdk-client-mock` added; `@aws-sdk/client-kms` moved from implicit-transitive to explicit `dependencies`; `test` script now runs `vitest run`), `vitest.config.mts` (new), `lib/services/pin_lockout_service.dart` (injectable `clock`, defaults unchanged), `test/task9_hardening_test.dart` (one test rewritten to use the injected clock), this checkpoint (Task 10's Gap Analysis corrected, this section added).
+**Checkpoint saved:** 2026-09-10

@@ -19,11 +19,14 @@ class PinLockoutService {
     FlutterSecureStorage? secureStorage,
     this.lockoutThreshold = 5,
     this.lockoutDuration = const Duration(seconds: 60),
-  }) : _secureStorage = secureStorage ?? const FlutterSecureStorage();
+    DateTime Function()? clock,
+  })  : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+        _clock = clock ?? DateTime.now;
 
   final FlutterSecureStorage _secureStorage;
   final int lockoutThreshold;
   final Duration lockoutDuration;
+  final DateTime Function() _clock;
 
   static String _failCountKey(String userId) => 'roster_vault_pin_fail_count_$userId';
   static String _lockedUntilKey(String userId) => 'roster_vault_pin_locked_until_$userId';
@@ -35,7 +38,7 @@ class PinLockoutService {
     final stored = await _secureStorage.read(key: _lockedUntilKey(userId));
     if (stored == null) return null;
     final until = DateTime.fromMillisecondsSinceEpoch(int.parse(stored));
-    if (DateTime.now().isAfter(until)) {
+    if (_clock().isAfter(until)) {
       // Lockout has naturally expired -- clean up so future reads are cheap
       // and don't need to re-derive "expired" every time.
       await _secureStorage.delete(key: _lockedUntilKey(userId));
@@ -54,7 +57,7 @@ class PinLockoutService {
     final count = (current == null ? 0 : int.parse(current)) + 1;
     await _secureStorage.write(key: _failCountKey(userId), value: count.toString());
     if (count >= lockoutThreshold) {
-      final until = DateTime.now().add(lockoutDuration);
+      final until = _clock().add(lockoutDuration);
       await _secureStorage.write(key: _lockedUntilKey(userId), value: until.millisecondsSinceEpoch.toString());
       return until;
     }

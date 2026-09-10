@@ -95,13 +95,15 @@ void main() {
     });
 
     test('a lockout whose duration has already passed is treated as expired', () async {
+      var now = DateTime(2026, 9, 10, 12, 0, 0);
       final service = PinLockoutService(
         secureStorage: FakeSecureStorage(),
         lockoutThreshold: 1,
-        lockoutDuration: const Duration(milliseconds: 1),
+        lockoutDuration: const Duration(seconds: 60),
+        clock: () => now,
       );
       await service.recordFailure('user-a');
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      now = now.add(const Duration(seconds: 61));
       expect(await service.lockedUntil('user-a'), isNull);
     });
   });

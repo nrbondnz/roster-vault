@@ -38,7 +38,7 @@ function base64url(input: Buffer): string {
 // (r, s). JWS ES256 (RFC 7518 3.4) instead requires the fixed-width raw
 // concatenation R || S, each 32 bytes for P-256, left-zero-padded. This is
 // the one non-obvious wire-format conversion in the whole handler.
-function derToRawEcdsaSignature(der: Uint8Array): Buffer {
+export function derToRawEcdsaSignature(der: Uint8Array): Buffer {
   let offset = 0;
   if (der[offset++] !== 0x30) throw new Error('Invalid DER signature: expected SEQUENCE');
   let seqLen = der[offset++];

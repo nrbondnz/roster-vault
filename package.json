@@ -7,7 +7,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -18,13 +18,16 @@
     "@aws-amplify/backend-cli": "^1.9.1",
     "@types/node": "^26.5.0",
     "aws-cdk-lib": "^2.267.0",
+    "aws-sdk-client-mock": "^4.1.0",
     "constructs": "^10.8.1",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.13",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1128.0",
+    "@aws-sdk/client-kms": "^3.1129.0",
     "@aws-sdk/util-dynamodb": "^3.996.9",
     "aws-amplify": "^6.20.0"
   }
