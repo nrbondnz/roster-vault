@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Call Tree &amp; Glossary — Roster Vault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="page">
+  <nav class="breadcrumb"><a href="index.html">← Architecture overview</a></nav>
+
+  <header class="title-block">
+    <span class="eyebrow"><span class="swatch" style="background:var(--crypto);display:inline-block;margin-right:6px;border-radius:2px;width:9px;height:9px;"></span>Cross-Cutting · Reference</span>
+    <h1>Call Tree &amp; Glossary</h1>
+    <p class="dek">
+      Two different things, kept deliberately separate. <strong>Cognito</strong> (a component)
+      performs SRP sign-in (a <em>function</em> of that component) — that's a parent→child
+      relationship, the call tree below. But <strong>SRP</strong> itself is a concept with
+      meaning independent of Cognito, the same way ECDSA and DER encoding are concepts
+      independent of KMS or <code>biometric_signature</code> — several different components'
+      functions rely on the exact same underlying concept, so it gets exactly one definition,
+      not one copy per component. That's the glossary, the second section below.
+    </p>
+  </header>
+
+  <div class="detail-body">
+    <p>
+      Every function name in the tree is sourced from the actual current code — read directly
+      while building this page, not paraphrased from the diagrams elsewhere on this site. Where
+      a function relies on a standalone concept, its name links down into the glossary; every
+      glossary entry links back up to everywhere in the tree that relies on it.
+    </p>
+  </div>
+
+  <h2 class="section-heading">Call Tree — components and their real functions</h2>
+
+  <ul class="call-tree">
+
+    <li>
+      <a class="component-name" href="components/roster-screen.html">RosterScreen</a>
+      <span class="component-note">the app's real entry point</span>
+      <ul>
+        <li><code>RosterRegistryService.listProfiles()</code> — on-device only, no network call</li>
+        <li><code>RootDetectionService.isLikelyCompromised()</code> — checked once per screen lifetime (<code>initState</code>); a filesystem-existence check against well-known root/jailbreak artefact paths, best-effort by design — changes what the UI shows, never what it allows, since this device class is deliberately unmanaged</li>
+        <li><code>PinLockoutService.lockedUntil(userId)</code> — checked before showing the PIN dialog at all, so a locked-out profile can't burn CPU on <a href="#argon2id">Argon2id</a> or learn anything from further attempts</li>
+        <li><code>LocalUnlockService.unlock(userId, pin)</code> — see LocalUnlockService below for what this actually does</li>
+        <li>"Add a person" → pushes <code>AuthGate</code> (the one online-only surface; greyed out when <code>connectivity_plus</code> reports no network)</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/roster-screen.html">ProfileHomeScreen</a>
+      <span class="component-note">where a selected profile actually lands (same file as RosterScreen)</span>
+      <ul>
+        <li><code>ClockIntegrityService.isClockRolledBack()</code> — checked <em>before</em> the offline verification below even runs; a rolled-back clock is refused with its own named reason rather than silently passing the ordinary expiry check</li>
+        <li>
+          <code>OfflineVerifier.verify()</code> — see OfflineVerifier below for its five checks in full; on success, feeds the token's own <code>iat</code> claim to <code>ClockIntegrityService.recordObservedServerTime()</code>, raising the stored high-water mark used by the rolled-back-clock check above
+        </li>
+        <li><code>EnrollmentService.enroll()</code> — Task 8's "Refresh now": calls the same <a href="components/appsync.html">AppSync <code>enroll</code> mutation</a> again while online; a revoked profile is refused without touching the already-verified local session</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/local-unlock-service.html">LocalUnlockService</a>
+      <span class="component-note">the PIN gate</span>
+      <ul>
+        <li><code>isSetUp(userId)</code> — does a partition file already exist for this person on this device</li>
+        <li>
+          <code>setUpPin(userId, pin, token)</code>
+          <ul>
+            <li><code>PartitionKeyService.deriveUserPartitionKey()</code> — <a href="#hkdf">HKDF</a>, deterministic from <code>K_device</code> + <code>userId</code>, no PIN involved</li>
+            <li><code>PinService.wrap(pin, token)</code> — <a href="#argon2id">Argon2id</a>-derived key, <a href="#aes-gcm">AES-GCM</a> encrypt</li>
+          </ul>
+        </li>
+        <li>
+          <code>unlock(userId, pin)</code>
+          <ul>
+            <li><code>EncryptedPartitionStore.open()</code> — see below</li>
+            <li><code>PinService.unwrap(pin, wrapped)</code> — <a href="#aes-gcm">AES-GCM</a> decrypt; wrong PIN returns <code>null</code>, never throws</li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/encrypted-partition-store.html">EncryptedPartitionStore</a>
+      <span class="component-note">sqlite3mc-ciphered SQLite, one file per person</span>
+      <ul>
+        <li><code>open(dbPath, partitionKey)</code> — <code>PRAGMA key</code> against the <code>sqlite3mc</code> cipher build</li>
+        <li>wrong-key rejection — proven by actually reading a real row back, not just by <code>PRAGMA key</code> not throwing</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/offline-verifier.html">OfflineVerifier</a>
+      <span class="component-note">zero network calls, enforced by construction — no <code>http</code>/Amplify import in the file at all</span>
+      <ul>
+        <li>signature check — <a href="#jws">JWS (ES256)</a> verify against the baked-in issuer public key</li>
+        <li>expiry check — the token's <code>exp</code> claim against the device clock</li>
+        <li>device-id check — the token's <code>device_id</code> claim against this device's own id</li>
+        <li>epoch check — against the <em>locally-persisted</em> known epoch, deliberately not the token's own epoch claim (that would make the check a tautology)</li>
+        <li>
+          challenge-response — proves possession of the private key, not just the token blob
+          <ul>
+            <li><code>UserIdentityService.signChallenge(userId, nonce)</code> — see below</li>
+            <li>verifies the echoed nonce matches, as another <a href="#jws">JWS</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/device-identity-service.html">DeviceIdentityService</a>
+      <span class="component-note">Trust Anchor 2 — one keypair per device</span>
+      <ul>
+        <li><code>getKeyInfo()</code> — checked first, every time; the plugin's <code>createKeys</code> silently replaces an existing key under the same alias otherwise</li>
+        <li><code>createKeys(signatureType: ecdsa)</code> — <a href="#ecdsa">ECDSA</a> P-256, hardware-backed via <a href="#secure-enclave-keystore">Secure Enclave / Android Keystore</a></li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/user-identity-service.html">UserIdentityService</a>
+      <span class="component-note">Trust Anchor 3 — one keypair per enrolled person</span>
+      <ul>
+        <li><code>ensureUserKeyPair(userId)</code> — same get-then-create pattern as DeviceIdentityService, a per-user key alias</li>
+        <li>
+          <code>signChallenge(userId, nonce)</code>
+          <ul>
+            <li><code>createSignature()</code> — produces an <a href="#ecdsa">ECDSA</a> signature, <a href="#der">DER</a>-encoded</li>
+            <li>DER-to-raw conversion — the exact same fix already needed for KMS's own DER output, ported rather than reinvented</li>
+            <li>assembles the result as a <a href="#jws">JWS</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/cognito.html">Cognito User Pool</a>
+      <span class="component-note">the one moment this app is online by design</span>
+      <ul>
+        <li><a href="#srp">SRP</a> sign-in — the real protocol behind <code>Amplify.Auth.signIn</code>, not a plaintext password round trip</li>
+        <li>session/ID token issuance — Cognito's own JWTs, distinct from this project's ES256 offline-capability tokens (see the enroll Lambda below)</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/appsync.html">AppSync — <code>enroll</code> mutation</a>
+      <span class="component-note">Cognito User Pool-authorized, resolved by a direct Lambda resolver</span>
+      <ul>
+        <li>verifies the caller's ID token before the Lambda below ever runs — <code>ctx.identity.sub</code> is already a verified claim by the time the handler sees it</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/enroll-lambda.html">enroll Lambda</a>
+      <span class="component-note"><code>amplify/functions/enroll/handler.ts</code></span>
+      <ul>
+        <li><code>GetItemCommand</code> — reads any existing <code>DeviceEnrollments</code> row: preserves the epoch across re-enrollment, and refuses outright if <code>status === 'revoked'</code> (Task 8)</li>
+        <li><code>kms:Sign</code> — see KMS issuer key below</li>
+        <li>DER-to-raw conversion — the same wire-format fix <code>UserIdentityService</code> needed independently, for the same reason</li>
+        <li><code>PutItemCommand</code> — writes the row (<code>deviceId</code>, <code>userId</code>, both public keys, <code>epoch</code>, <code>status</code>, <code>lastIssuedExpiry</code>)</li>
+        <li>hand-builds the final token as a <a href="#jws">JWS (ES256)</a></li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/kms.html">KMS issuer key</a>
+      <span class="component-note">ECC_NIST_P256, SIGN_VERIFY only</span>
+      <ul>
+        <li><code>kms:Sign</code> (<code>ECDSA_SHA_256</code>) — see <a href="#ecdsa">ECDSA</a> and <a href="#der">DER</a>; KMS returns DER, the Lambda converts it</li>
+        <li><code>kms:GetPublicKey</code> — the only way the public half ever leaves KMS; the private key never does, by construction (an <a href="#aws-kms-cmk">AWS KMS asymmetric CMK</a>)</li>
+      </ul>
+    </li>
+
+    <li>
+      <a class="component-name" href="components/dynamodb.html">DeviceEnrollments (DynamoDB)</a>
+      <span class="component-note">PK <code>deviceId</code>, SK <code>userId</code></span>
+      <ul>
+        <li>read/written only by the enroll Lambda above — no other component touches this table directly</li>
+      </ul>
+    </li>
+
+  </ul>
+
+  <h2 class="section-heading">Glossary — standalone concepts</h2>
+  <p style="margin:-8px 0 20px;font-size:13.5px;color:var(--text-faint);max-width:68ch;">
+    Each of these has a real meaning outside this project entirely. Every entry links back to
+    everywhere in the tree above that actually relies on it — the point of separating concept
+    from component in the first place.
+  </p>
+
+  <div class="glossary-entry">
+    <h3 id="srp" class="glossary-term">SRP — Secure Remote Password</h3>
+    <p class="glossary-def">
+      A password-authenticated key-exchange protocol. Proves both sides know the password
+      without the password (or anything equivalent to it) ever crossing the network in either
+      direction — the client and server each derive a shared session key from the password
+      independently, and the protocol proves the derivation matched. This is what Amplify's
+      <code>Auth.signIn</code> actually runs under the hood against a Cognito User Pool; it is
+      not a plaintext password POST.
+    </p>
+    <p class="glossary-usedby">Used by: <a href="components/cognito.html">Cognito User Pool</a> → SRP sign-in</p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="ecdsa" class="glossary-term">ECDSA (P-256)</h3>
+    <p class="glossary-def">
+      Elliptic Curve Digital Signature Algorithm — an asymmetric signature scheme. A private
+      key signs a message; anyone holding the corresponding public key can verify the signature
+      without ever being able to forge one or recover the private key from it. P-256
+      (<code>secp256r1</code> / <code>prime256v1</code>) is the specific curve this project uses
+      everywhere it signs anything, chosen consistently across all three trust anchors.
+    </p>
+    <p class="glossary-usedby">
+      Used by: <a href="components/kms.html">KMS issuer key</a> (<code>kms:Sign</code>) ·
+      <a href="components/device-identity-service.html">DeviceIdentityService</a>
+      (<code>createKeys</code>) ·
+      <a href="components/user-identity-service.html">UserIdentityService</a>
+      (<code>createSignature</code>)
+    </p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="der" class="glossary-term">DER encoding</h3>
+    <p class="glossary-def">
+      Distinguished Encoding Rules — a specific, deterministic byte encoding for ASN.1
+      structures. An ECDSA signature is mathematically just two integers, <code>r</code> and
+      <code>s</code>; DER wraps them as
+      <code>SEQUENCE { INTEGER r, INTEGER s }</code>, a variable-length format. Both this
+      project's KMS calls and its on-device <code>biometric_signature</code> calls return
+      signatures DER-encoded — confirmed by reading each platform's actual signing API, not
+      assumed — while JWS (below) needs a fixed-width raw concatenation instead, which is why
+      the same conversion function had to be written twice, once in TypeScript for the Lambda
+      and once in Dart for the device.
+    </p>
+    <p class="glossary-usedby">
+      Used by: <a href="components/enroll-lambda.html">enroll Lambda</a>'s DER-to-raw
+      conversion (KMS's output) ·
+      <a href="components/user-identity-service.html">UserIdentityService.signChallenge</a>'s
+      DER-to-raw conversion (the device key's output)
+    </p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="jws" class="glossary-term">JWS / JWT (ES256)</h3>
+    <p class="glossary-def">
+      JSON Web Signature — a compact, signed token format: base64url(header)
+      <code>.</code> base64url(payload) <code>.</code> base64url(signature). A JWT is the
+      specific case where the payload is a JSON claims set, which is what every token in this
+      project actually is. <code>ES256</code> names the algorithm in the header — ECDSA with
+      P-256 and SHA-256 — and mandates the raw, fixed-width 64-byte signature format (not DER),
+      the exact conversion the DER entry above describes.
+    </p>
+    <p class="glossary-usedby">
+      Used by: the <a href="components/enroll-lambda.html">enroll Lambda</a>'s issued token ·
+      <a href="components/offline-verifier.html">OfflineVerifier</a>'s signature check and
+      challenge-response verification · <a href="components/user-identity-service.html">UserIdentityService.signChallenge</a>'s
+      assembled response
+    </p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="argon2id" class="glossary-term">Argon2id</h3>
+    <p class="glossary-def">
+      A memory-hard key-derivation function purpose-built for low-entropy secrets like PINs and
+      passwords — winner of the 2015 Password Hashing Competition. Deliberately slow and
+      memory-expensive to compute, which is exactly what makes brute-forcing a 4-digit PIN
+      impractical even with GPU/ASIC hardware, unlike a fast general-purpose hash. This project
+      never stores a PIN hash to compare against; Argon2id output is used directly as an
+      AES-GCM key, so correctness is proven by whether decryption succeeds, not by a comparison.
+    </p>
+    <p class="glossary-usedby">Used by: <code>PinService.wrap</code> / <code>unwrap</code>, called from <a href="components/local-unlock-service.html">LocalUnlockService</a></p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="hkdf" class="glossary-term">HKDF</h3>
+    <p class="glossary-def">
+      HMAC-based Key Derivation Function (RFC 5869) — expands one high-entropy secret into one
+      or more independent-looking derived keys, each tied to a distinct "info" parameter. Here,
+      one device-wide secret (<code>K_device</code>) plus a person's <code>userId</code> as the
+      info parameter deterministically derives that person's own partition key
+      (<code>K_user</code>) — same inputs always produce the same key, and different
+      <code>userId</code>s produce unrelated keys, without needing to separately store a key per
+      person.
+    </p>
+    <p class="glossary-usedby">Used by: <code>PartitionKeyService.deriveUserPartitionKey</code>, called from <a href="components/local-unlock-service.html">LocalUnlockService</a></p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="aes-gcm" class="glossary-term">AES-GCM</h3>
+    <p class="glossary-def">
+      AES in Galois/Counter Mode — an authenticated encryption cipher: it encrypts <em>and</em>
+      produces a MAC in one pass, so decryption with the wrong key doesn't silently produce
+      garbage, it fails loudly and verifiably. That authentication failure is exactly how a
+      wrong PIN gets detected in this project — there's no separate correctness check, the
+      cipher's own integrity check <em>is</em> the check.
+    </p>
+    <p class="glossary-usedby">Used by: <code>PinService.wrap</code> / <code>unwrap</code>, called from <a href="components/local-unlock-service.html">LocalUnlockService</a></p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="secure-enclave-keystore" class="glossary-term">Secure Enclave / Android Keystore</h3>
+    <p class="glossary-def">
+      Hardware-isolated key storage, one per mobile platform. A private key generated inside
+      either can be used to sign or decrypt, but the raw key material itself is architecturally
+      incapable of ever leaving the secure hardware — not "the API doesn't expose it," the
+      hardware itself has no path out. This is what makes Trust Anchor 2 and 3's "private key
+      never touches app memory" claim a hardware guarantee, not a software promise.
+    </p>
+    <p class="glossary-usedby">
+      Used by: <a href="components/device-identity-service.html">DeviceIdentityService</a> ·
+      <a href="components/user-identity-service.html">UserIdentityService</a> · see also
+      <a href="platform-differences.html">Platform Differences</a> for exactly how the Android
+      Keystore and iOS Secure Enclave paths diverge
+    </p>
+  </div>
+
+  <div class="glossary-entry">
+    <h3 id="aws-kms-cmk" class="glossary-term">AWS KMS asymmetric CMK</h3>
+    <p class="glossary-def">
+      A Customer Master Key in AWS Key Management Service, configured for asymmetric
+      sign/verify rather than symmetric encrypt/decrypt. AWS holds the private key material
+      inside its own HSM infrastructure; every use is an API call (<code>kms:Sign</code>) that
+      never returns the key itself, only a signature — the cloud-side equivalent of the
+      Secure Enclave/Keystore guarantee above, for the one key that has to live on the server
+      instead of a device.
+    </p>
+    <p class="glossary-usedby">Used by: the <a href="components/kms.html">KMS issuer key</a> (Trust Anchor 1)</p>
+  </div>
+
+  <h2 class="section-heading">Not glossary-worthy — on purpose</h2>
+  <div class="detail-body">
+    <p>
+      Several real functions in the tree above are deliberately <em>not</em> given their own
+      glossary entry — "wrong-key rejection," "greyed out when offline," "preserves the epoch
+      across re-enrollment" are all real project behavior, but they don't mean anything outside
+      this codebase the way SRP or ECDSA do. A glossary entry for project-specific behavior
+      would just be a second, worse copy of the component page it belongs to.
+    </p>
+  </div>
+
+  <footer class="colophon">
+    Sourced directly from lib/services/*.dart, lib/screens/roster_screen.dart, and
+    amplify/functions/enroll/handler.ts — not from the diagrams elsewhere on this site.
+  </footer>
+</div>
+</body>
+</html>
